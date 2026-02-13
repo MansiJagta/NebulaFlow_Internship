@@ -1,0 +1,49 @@
+############################
+# ROOT LEVEL IGNORE
+############################
+
+# Node modules (frontend)
+frontend/node_modules/
+
+# Production builds
+frontend/dist/
+frontend/build/
+
+# Vite cache
+frontend/.vite/
+
+# Logs
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+
+# Environment variables
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE folders
+.vscode/
+.idea/
+
+# Coverage
+frontend/coverage/
+
+############################
+# If backend added later
+############################
+
+backend/node_modules/
+backend/dist/
+backend/.env
+backend/.env.local
+
+############################
+# Docker
+############################
+
+docker-compose.override.yml
