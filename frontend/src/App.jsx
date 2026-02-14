@@ -9,6 +9,7 @@ import AppLayout from "@/components/layout/AppLayout";
 
 import Login from "@/pages/Login";
 import RoleSelector from "@/pages/RoleSelector";
+import RepositorySelection from "@/pages/RepositorySelection";
 import NotFound from "@/pages/NotFound";
 
 import PMDashboard from "@/pages/pm/PMDashboard";
@@ -39,6 +40,7 @@ const App = () => (
                         <Route path="/" element={<Navigate to="/login" replace />} />
                         <Route path="/login" element={<Login />} />
                         <Route path="/select-role" element={<RoleSelector />} />
+                        <Route path="/repository-selection" element={<RepositorySelection />} />
 
                         {/* PM Routes */}
                         <Route element={<ProtectedRoute requiredRole="pm"><AppLayout /></ProtectedRoute>}>

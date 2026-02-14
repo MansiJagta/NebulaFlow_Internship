@@ -40,7 +40,7 @@ const RoleSelector = () => {
     const handleConfirm = () => {
         if (!selectedRole) return;
         selectRole(selectedRole);
-        navigate(selectedRole === 'pm' ? '/pm/dashboard' : '/collaborator/dashboard');
+        navigate('/repository-selection');
     };
 
     const selected = roles.find(r => r.id === selectedRole);
