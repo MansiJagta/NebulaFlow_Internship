@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
@@ -8,24 +8,38 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { GlassCard } from '@/components/ui/card';
 
-const Login = () => {
+const Signup = () => {
     const [email, setEmail] = useState('');
+    const [fullName, setFullName] = useState('');
     const [password, setPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
     const [loading, setLoading] = useState(false);
-    const [remember, setRemember] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
-    const { login } = useAuth();
+    const [error, setError] = useState('');
+    const { register } = useAuth();
     const navigate = useNavigate();
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        setLoading(true);
-        await login(email, password);
-        setLoading(false);
-        navigate('/repository-selection');
+        setError('');
+
+        if (password !== confirmPassword) {
+            setError('Passwords do not match');
+            return;
+        }
+
+        try {
+            setLoading(true);
+            await register(email, password, fullName);
+            navigate('/repository-selection');
+        } catch (err) {
+            setError(err.message || 'Something went wrong');
+        } finally {
+            setLoading(false);
+        }
     };
-    
-    const handleGoogleSignIn = () => {
+
+    const handleGoogleSignUp = () => {
         const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:5000';
         window.location.href = `${apiBase}/api/auth/google`;
     };
@@ -39,7 +53,6 @@ const Login = () => {
         >
             <ParticleBackground />
 
-            {/* Floating orbs */}
             <motion.div
                 className="absolute w-96 h-96 rounded-full opacity-20 blur-[100px]"
                 style={{ background: 'radial-gradient(circle, hsl(var(--nebula-cyan) / 0.6), transparent)' }}
@@ -60,7 +73,6 @@ const Login = () => {
                 className="relative z-10 w-full max-w-md px-4"
             >
                 <GlassCard className="p-8">
-                    {/* Animated Logo */}
                     <div className="text-center mb-8">
                         <motion.div
                             className="inline-flex items-center gap-3 mb-4"
@@ -74,25 +86,37 @@ const Login = () => {
                                 <Rocket className="w-7 h-7 text-white" />
                             </motion.div>
                             <h1 className="text-4xl font-extrabold bg-gradient-to-r from-white via-nebula-cyan to-nebula-purple bg-clip-text text-transparent">
-                                Nebula Flow
+                                Create your Nebula Flow account
                             </h1>
                         </motion.div>
-                        <p className="text-muted-foreground">Sign in to your workspace</p>
+                        <p className="text-muted-foreground">Sign up to start collaborating with your team</p>
                     </div>
 
                     <form onSubmit={handleSubmit} className="space-y-5">
-                        {/* Email */}
+                        <motion.div
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: 0.05 }}
+                        >
+                            <Input
+                                type="text"
+                                placeholder="Full name"
+                                value={fullName}
+                                onChange={e => setFullName(e.target.value)}
+                                className="h-11 bg-black/20 border-white/10 text-white placeholder:text-muted-foreground/70"
+                            />
+                        </motion.div>
+
                         <motion.div
                             initial={{ opacity: 0, x: -20 }}
                             animate={{ opacity: 1, x: 0 }}
                             transition={{ delay: 0.1 }}
-                            className="space-y-1"
                         >
                             <div className="relative group">
                                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-nebula-cyan transition-colors" />
                                 <Input
                                     type="email"
-                                    placeholder="Email address"
+                                    placeholder="Work email"
                                     value={email}
                                     onChange={e => setEmail(e.target.value)}
                                     required
@@ -101,12 +125,11 @@ const Login = () => {
                             </div>
                         </motion.div>
 
-                        {/* Password */}
                         <motion.div
                             initial={{ opacity: 0, x: -20 }}
                             animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: 0.2 }}
-                            className="space-y-1"
+                            transition={{ delay: 0.15 }}
+                            className="space-y-3"
                         >
                             <div className="relative group">
                                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-nebula-cyan transition-colors" />
@@ -126,46 +149,24 @@ const Login = () => {
                                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                                 </button>
                             </div>
+                            <Input
+                                type="password"
+                                placeholder="Confirm password"
+                                value={confirmPassword}
+                                onChange={e => setConfirmPassword(e.target.value)}
+                                required
+                                className="h-11 bg-black/20 border-white/10 text-white placeholder:text-muted-foreground/70"
+                            />
                         </motion.div>
 
-                        {/* Remember me */}
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            transition={{ delay: 0.3 }}
-                            className="flex items-center justify-between"
-                        >
-                            <label className="flex items-center gap-2 cursor-pointer group">
-                                <div
-                                    onClick={() => setRemember(!remember)}
-                                    className={`w-4 h-4 rounded border transition-all duration-200 flex items-center justify-center ${remember
-                                        ? 'bg-nebula-cyan border-nebula-cyan'
-                                        : 'border-white/20 bg-black/20 group-hover:border-nebula-cyan/50'
-                                        }`}
-                                >
-                                    {remember && (
-                                        <motion.svg
-                                            initial={{ scale: 0 }}
-                                            animate={{ scale: 1 }}
-                                            className="w-3 h-3 text-black"
-                                            viewBox="0 0 12 12"
-                                        >
-                                            <path d="M2 6l3 3 5-5" stroke="currentColor" fill="none" strokeWidth="2" strokeLinecap="round" />
-                                        </motion.svg>
-                                    )}
-                                </div>
-                                <span className="text-sm text-muted-foreground group-hover:text-white transition-colors">Remember me</span>
-                            </label>
-                            <a href="#" className="text-sm text-nebula-cyan hover:text-nebula-cyan/80 transition-colors">
-                                Forgot password?
-                            </a>
-                        </motion.div>
+                        {error && (
+                            <p className="text-xs text-red-400">{error}</p>
+                        )}
 
-                        {/* Sign In Button with Ripple (Gradient variant) */}
                         <motion.div
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: 0.4 }}
+                            transition={{ delay: 0.2 }}
                         >
                             <Button
                                 type="submit"
@@ -181,44 +182,42 @@ const Login = () => {
                                         transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
                                     />
                                 ) : (
-                                    <>Sign In<ArrowRight className="w-4 h-4 ml-2" /></>
+                                    <>Create account<ArrowRight className="w-4 h-4 ml-2" /></>
                                 )}
                             </Button>
                         </motion.div>
                     </form>
 
-                    {/* Divider */}
                     <div className="flex items-center gap-3 my-6">
                         <div className="flex-1 h-px bg-white/10" />
                         <span className="text-xs text-muted-foreground uppercase tracking-wider">or continue with</span>
                         <div className="flex-1 h-px bg-white/10" />
                     </div>
 
-                    {/* Google OAuth only */}
                     <motion.button
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.5 }}
+                        transition={{ delay: 0.25 }}
                         whileHover={{ scale: 1.02, y: -1 }}
                         whileTap={{ scale: 0.97 }}
                         type="button"
-                        onClick={handleGoogleSignIn}
-                        className="w-full flex items-center justify-center gap-2 py-3 rounded-lg border border-white/10 bg-black/20 text-muted-foreground hover:text-white hover:border-white/20 hover:bg-white/5 transition-all duration-200"
+                        onClick={handleGoogleSignUp}
+                        className="w-full flex items-center justify-center gap-2 py-3 rounded-lg border border:white/10 bg-black/20 text-muted-foreground hover:text-white hover:border-white/20 hover:bg-white/5 transition-all duration-200"
                     >
-                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs font-bold text-black">
+                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs font-bold text:black">
                             G
                         </span>
-                        <span className="text-sm font-medium">Continue with Google</span>
+                        <span className="text-sm font-medium">Sign up with Google</span>
                     </motion.button>
 
                     <p className="text-center text-xs text-muted-foreground mt-6">
-                        Don&apos;t have an account?{' '}
+                        Already have an account?{' '}
                         <button
                             type="button"
-                            onClick={() => navigate('/signup')}
+                            onClick={() => navigate('/login')}
                             className="text-nebula-cyan hover:text-nebula-cyan/80 underline-offset-4 hover:underline"
                         >
-                            Sign up
+                            Sign in
                         </button>
                     </p>
                 </GlassCard>
@@ -227,4 +226,5 @@ const Login = () => {
     );
 };
 
-export default Login;
+export default Signup;
+

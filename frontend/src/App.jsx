@@ -8,7 +8,7 @@ import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import AppLayout from "@/components/layout/AppLayout";
 
 import Login from "@/pages/Login";
-import RoleSelector from "@/pages/RoleSelector";
+import Signup from "@/pages/Signup";
 import RepositorySelection from "@/pages/RepositorySelection";
 import NotFound from "@/pages/NotFound";
 
@@ -39,7 +39,7 @@ const App = () => (
                         {/* Public */}
                         <Route path="/" element={<Navigate to="/login" replace />} />
                         <Route path="/login" element={<Login />} />
-                        <Route path="/select-role" element={<RoleSelector />} />
+                        <Route path="/signup" element={<Signup />} />
                         <Route path="/repository-selection" element={<RepositorySelection />} />
 
                         {/* PM Routes */}

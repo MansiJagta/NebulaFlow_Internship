@@ -85,7 +85,7 @@ const MOCK_REPOS = [
 
 const RepositorySelection = () => {
     const navigate = useNavigate();
-    const { user, role } = useAuth();
+    const { user, role, logout } = useAuth();
     const [isConnected, setIsConnected] = useState(false);
     const [isConnecting, setIsConnecting] = useState(false);
     const [isLoadingRepos, setIsLoadingRepos] = useState(false);
@@ -160,18 +160,25 @@ const RepositorySelection = () => {
                     <div className="flex items-center gap-4">
                         {isConnected ? (
                             <div className="flex items-center gap-4 animate-fade-in-up">
-                                <Badge variant="outline" className={`border-white/10 ${role === 'pm' ? 'bg-nebula-cyan/10 text-nebula-cyan' : 'bg-nebula-pink/10 text-nebula-pink'} px-3 py-1`}>
-                                    Active Session: {role === 'pm' ? 'Project Manager' : 'Collaborator'}
-                                </Badge>
+                                <Button
+                                    variant="outline"
+                                    className="border-white/10 bg-nebula-cyan/10 text-nebula-cyan px-4 py-2 hover:bg-nebula-cyan/20"
+                                >
+                                    Create Collaboration
+                                </Button>
                                 <div className="h-8 w-px bg-white/10 mx-2 hidden md:block" />
                                 <div className="flex items-center gap-3">
                                     <div className="text-right hidden md:block">
                                         <div className="text-sm font-medium text-white">{user?.name || "User"}</div>
                                         <button
-                                            onClick={() => setIsConnected(false)}
+                                            onClick={async () => {
+                                                setIsConnected(false);
+                                                await logout();
+                                                navigate('/login');
+                                            }}
                                             className="text-xs text-white/50 hover:text-white transition-colors flex items-center justify-end gap-1 ml-auto"
                                         >
-                                            Switch Account <LogOut className="w-3 h-3" />
+                                            Log out <LogOut className="w-3 h-3" />
                                         </button>
                                     </div>
                                     <Avatar className="h-10 w-10 border-2 border-white/10 hover:border-nebula-cyan/50 transition-colors">
@@ -339,7 +346,7 @@ const RepositorySelection = () => {
                 <Button
                     variant="ghost"
                     className="text-white/50 hover:text-white hover:bg-white/5 backdrop-blur-md gap-2 pl-2"
-                    onClick={() => navigate("/select-role")}
+                    onClick={() => navigate("/login")}
                 >
                     <ArrowLeft className="w-4 h-4" />
                     Back to Role Selection
