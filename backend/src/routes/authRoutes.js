@@ -6,8 +6,9 @@ const {
   logout,
   startGoogleOAuth,
   handleGoogleCallback,
-  redirectToGitHub,
-  handleGitHubCallback,
+  connectGitHub,
+  githubCallback,
+  getGitHubRepos
 } = require('../controllers/authController');
 
 const router = express.Router();
@@ -22,8 +23,7 @@ router.post('/logout', logout);
 router.get('/google', startGoogleOAuth);
 router.get('/google/callback', handleGoogleCallback);
 
-// Existing GitHub OAuth (used later for repository access)
-router.get('/github', redirectToGitHub);
-router.get('/github/callback', handleGitHubCallback);
-
+router.get('/github', connectGitHub);
+router.get('/github/callback', githubCallback);
+router.get('/github/repos', getGitHubRepos);
 module.exports = router;

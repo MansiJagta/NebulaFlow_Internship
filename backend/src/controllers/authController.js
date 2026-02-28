@@ -252,18 +252,24 @@ exports.handleGoogleCallback = async (req, res) => {
     return res.status(500).send('Google authentication failed');
   }
 };
-
-// -------- Existing GitHub OAuth (for repos) --------
-
-exports.redirectToGitHub = (req, res) => {
-  const url = `https://github.com/login/oauth/authorize?client_id=${process.env.GITHUB_CLIENT_ID}&redirect_uri=${process.env.GITHUB_CALLBACK_URL}&scope=repo,user&prompt=select_account`;
-  res.redirect(url); // Forces account selection
+exports.connectGitHub = (req, res) => {
+  const params = new URLSearchParams({
+    client_id: process.env.GITHUB_CLIENT_ID,
+    redirect_uri: process.env.GITHUB_CALLBACK_URL, // must match GitHub app callback
+    scope: 'repo user',
+    allow_signup: 'true',
+  });
+  const url = `https://github.com/login/oauth/authorize?${params.toString()}`;
+  res.redirect(url);
 };
 
-exports.handleGitHubCallback = async (req, res) => {
+exports.githubCallback = async (req, res) => {
   const { code } = req.query;
+  if (!code) return res.status(400).send('No code provided');
+
   try {
-    const response = await axios.post(
+    // Exchange code for token
+    const tokenRes = await axios.post(
       'https://github.com/login/oauth/access_token',
       {
         client_id: process.env.GITHUB_CLIENT_ID,
@@ -273,17 +279,80 @@ exports.handleGitHubCallback = async (req, res) => {
       { headers: { Accept: 'application/json' } }
     );
 
-    req.session.githubToken = response.data.access_token;
+    const accessToken = tokenRes.data.access_token;
 
-    // Fetch user info to confirm which account was picked
-    const user = await axios.get('https://api.github.com/user', {
-      headers: { Authorization: `Bearer ${req.session.githubToken}` },
+    // Get GitHub user
+    const githubUser = await axios.get('https://api.github.com/user', {
+      headers: { Authorization: `Bearer ${accessToken}` },
     });
-    req.session.user = user.data;
 
-    res.redirect(`${FRONTEND_URL}/repository-selection`);
+    const providerUserId = githubUser.data.id.toString();
+    const username = githubUser.data.login;
+
+    // Get logged-in user from session
+    const userId = req.session.userId;
+    if (!userId) return res.status(401).send('Login required first');
+
+    // Save GitHub info in DB
+    await UserIdentity.findOneAndUpdate(
+      { provider: 'github', providerUserId },
+      { userId, provider: 'github', providerUserId, username, accessTokenEncrypted: accessToken },
+      { upsert: true, new: true }
+    );
+
+    req.session.githubToken = accessToken;
+
+    // Redirect back to frontend
+    res.redirect(`${process.env.FRONTEND_URL}/repository-selection`);
   } catch (err) {
-    console.error('[nebula-flow] GitHub OAuth failed', err.response?.data || err);
-    res.status(500).json({ error: 'Auth failed' });
+    console.error('[GitHub OAuth Error]', err.response?.data || err);
+    res.status(500).send('GitHub authentication failed');
+  }
+};
+
+exports.getGitHubRepos = async (req, res) => {
+  try {
+    const userId = req.session.userId;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Not logged in' });
+    }
+
+    const identity = await UserIdentity.findOne({
+      userId,
+      provider: 'github',
+    });
+
+    if (!identity) {
+      return res.status(400).json({ error: 'GitHub not connected' });
+    }
+
+    const token = identity.accessTokenEncrypted;
+
+    const response = await axios.get(
+      'https://api.github.com/user/repos',
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    const repos = response.data.map(repo => ({
+      id: repo.id,
+      name: repo.name,
+      description: repo.description || "No description",
+      language: repo.language || "Unknown",
+      isPrivate: repo.private,
+      updatedAt: repo.updated_at,
+      stars: repo.stargazers_count,
+      forks: repo.forks_count,
+    }));
+
+    res.json(repos);
+
+  } catch (err) {
+    console.error('[Fetch Repos Error]', err.response?.data || err);
+    res.status(500).json({ error: 'Failed to fetch repos' });
   }
 };
