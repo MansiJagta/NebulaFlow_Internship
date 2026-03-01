@@ -1,39 +1,123 @@
+import { useState, useEffect } from 'react';
 import KpiCard from '@/components/common/KpiCard';
 import ActivityFeed from '@/components/common/ActivityFeed';
 import NebulaBarChart from '@/components/common/NebulaBarChart';
 import MiniKanban from '@/components/pm/MiniKanban';
 import QuickMessage from '@/components/pm/QuickMessage';
 import { motion } from 'framer-motion';
-import { ListChecks, GitBranch, Zap, Clock } from 'lucide-react';
+import { ListChecks, GitBranch, Star, Clock, GitMerge, User, Loader2, Github } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { sprintStats } from '@/data/jiraMockData';
+import { commitFrequency as mockCommitFrequency } from '@/data/githubMockData';
+import { useAuth } from '@/contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
 
-// Mock data for commit activity
-const commitData = [
-    { day: 'Mon', commits: 12 },
-    { day: 'Tue', commits: 18 },
-    { day: 'Wed', commits: 8 },
-    { day: 'Thu', commits: 24 },
-    { day: 'Fri', commits: 16 },
-    { day: 'Sat', commits: 4 },
-    { day: 'Sun', commits: 2 },
-];
+const TOOLTIP_STYLE = {
+    background: 'hsl(234, 55%, 18%)',
+    border: '1px solid hsl(257, 60%, 30%)',
+    borderRadius: '8px',
+    color: 'hsl(233, 60%, 92%)',
+};
 
 const PMDashboard = () => {
+    const navigate = useNavigate();
+    const { selectedRepo, API_BASE_URL } = useAuth();
+
+    const [ghData, setGhData] = useState(null);
+    const [ghLoading, setGhLoading] = useState(false);
+
+    useEffect(() => {
+        if (!selectedRepo) return;
+
+        const fetchGhData = async () => {
+            setGhLoading(true);
+            try {
+                const owner = selectedRepo.owner
+                    || (selectedRepo.fullName?.includes('/')
+                        ? selectedRepo.fullName.split('/')[0]
+                        : null);
+                const repo = selectedRepo.name;
+                if (!owner) return;
+
+                const res = await axios.get(
+                    `${API_BASE_URL}/api/github/repo?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}`,
+                    { withCredentials: true }
+                );
+                setGhData(res.data);
+            } catch (err) {
+                console.error('[PMDashboard] GitHub fetch failed:', err);
+            } finally {
+                setGhLoading(false);
+            }
+        };
+
+        fetchGhData();
+    }, [selectedRepo, API_BASE_URL]);
+
+    // Derived values – prefer real data, fall back to sensible defaults
+    const openPRs = ghData?.openPRsCount ?? 5;
+    const stars = ghData?.repoInfo?.stars ?? null;
+    const openIssues = ghData?.repoInfo?.openIssues ?? null;
+
+    // Commit chart data: last 7 days from GitHub (or mock)
+    const rawFrequency = ghData?.commitFrequency ?? mockCommitFrequency;
+    const commitChartData = rawFrequency.slice(-7).map(d => ({
+        day: d.date,
+        commits: d.count,
+    }));
+
+    // Latest 4 commits for the inline feed strip
+    const recentCommits = (ghData?.recentCommits ?? []).slice(0, 4);
 
     return (
         <div className="space-y-6">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                <h1 className="text-2xl font-bold nebula-gradient-text mb-1">Project Manager Dashboard</h1>
-                <p className="text-muted-foreground text-sm">Overview of your team's progress & performance</p>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-start justify-between">
+                <div>
+                    <h1 className="text-2xl font-bold nebula-gradient-text mb-1">Project Manager Dashboard</h1>
+                    <p className="text-muted-foreground text-sm">
+                        {selectedRepo
+                            ? <span className="flex items-center gap-1.5"><Github className="w-3 h-3" />{selectedRepo.fullName || selectedRepo.name}</span>
+                            : "Overview of your team's progress & performance"}
+                    </p>
+                </div>
+                {ghLoading && (
+                    <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Loader2 className="w-3 h-3 animate-spin" /> Syncing GitHub…
+                    </span>
+                )}
+                {!selectedRepo && (
+                    <button
+                        onClick={() => navigate('/repository-selection')}
+                        className="text-xs text-primary border border-primary/30 rounded-md px-3 py-1.5 hover:bg-primary/10 flex items-center gap-1.5 transition-colors"
+                    >
+                        <Github className="w-3 h-3" /> Connect GitHub
+                    </button>
+                )}
             </motion.div>
 
             {/* KPI Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <KpiCard title="Active Tasks" value={24} icon={<ListChecks className="w-5 h-5" />} trend={{ value: 12, positive: true }} delay={0} />
-                <KpiCard title="Team Velocity" value={42} suffix="pts" icon={<Zap className="w-5 h-5" />} trend={{ value: 8, positive: true }} delay={0.1} />
-                <KpiCard title="Open PRs" value={5} icon={<GitBranch className="w-5 h-5" />} trend={{ value: 3, positive: false }} delay={0.2} />
-                <KpiCard title="Sprint Time" value={8} suffix="days" icon={<Clock className="w-5 h-5" />} delay={0.3} />
+                {stars !== null ? (
+                    <KpiCard title="Repo Stars" value={stars} icon={<Star className="w-5 h-5" />} trend={{ value: 0, positive: true }} delay={0.1} />
+                ) : (
+                    <KpiCard title="Team Velocity" value={42} suffix="pts" icon={<Star className="w-5 h-5" />} trend={{ value: 8, positive: true }} delay={0.1} />
+                )}
+                <KpiCard
+                    title="Open PRs"
+                    value={openPRs}
+                    icon={<GitBranch className="w-5 h-5" />}
+                    trend={{ value: openPRs > 5 ? openPRs - 5 : 0, positive: false }}
+                    delay={0.2}
+                />
+                {openIssues !== null ? (
+                    <KpiCard title="Open Issues" value={openIssues} icon={<GitMerge className="w-5 h-5" />} trend={{ value: 0, positive: false }} delay={0.3} />
+                ) : (
+                    <KpiCard title="Sprint Time" value={8} suffix="days" icon={<Clock className="w-5 h-5" />} delay={0.3} />
+                )}
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
@@ -66,9 +150,7 @@ const PMDashboard = () => {
                                 </defs>
                                 <XAxis dataKey="day" stroke="hsl(233, 30%, 55%)" fontSize={12} tickLine={false} axisLine={false} />
                                 <YAxis stroke="hsl(233, 30%, 55%)" fontSize={12} tickLine={false} axisLine={false} />
-                                <Tooltip
-                                    contentStyle={{ background: 'hsl(234, 55%, 18%)', border: '1px solid hsl(257, 60%, 30%)', borderRadius: '8px', color: 'hsl(233, 60%, 92%)' }}
-                                />
+                                <Tooltip contentStyle={TOOLTIP_STYLE} />
                                 <Area type="monotone" dataKey="ideal" stroke="hsl(var(--nebula-purple))" strokeDasharray="5 5" fill="none" strokeWidth={2} />
                                 <Area type="monotone" dataKey="remaining" stroke="hsl(var(--nebula-cyan))" fill="url(#burnGrad)" strokeWidth={3} />
                             </AreaChart>
@@ -87,16 +169,55 @@ const PMDashboard = () => {
                     </motion.div>
                 </div>
 
-                {/* Sidebar/Feed Area */}
+                {/* Sidebar / Feed Area */}
                 <div className="space-y-6">
+                    {/* Commit Activity Chart – now live */}
                     <NebulaBarChart
-                        data={commitData}
+                        data={commitChartData}
                         dataKey="commits"
                         xKey="day"
-                        title="Commit Activity"
+                        title={selectedRepo ? `Commits · ${selectedRepo.name}` : 'Commit Activity'}
                         height={200}
                         color="hsl(var(--nebula-pink))"
                     />
+
+                    {/* Recent GitHub Commits strip (only when connected) */}
+                    {recentCommits.length > 0 && (
+                        <motion.div
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.5 }}
+                            className="nebula-card p-4 space-y-3"
+                        >
+                            <div className="flex items-center justify-between mb-1">
+                                <h3 className="text-xs font-semibold text-foreground uppercase tracking-wider">Recent Commits</h3>
+                                <button
+                                    onClick={() => navigate('/pm/github')}
+                                    className="text-[10px] text-primary hover:underline"
+                                >
+                                    See all →
+                                </button>
+                            </div>
+                            {recentCommits.map((c, i) => (
+                                <div key={c.sha || i} className="flex items-start gap-2 group">
+                                    <div className="w-6 h-6 mt-0.5 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                                        <GitBranch className="w-3 h-3" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-xs text-foreground truncate">{c.message}</p>
+                                        <div className="flex items-center gap-2 mt-0.5">
+                                            <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                                                <User className="w-2.5 h-2.5" />{c.author}
+                                            </span>
+                                            <Badge variant="outline" className="text-[9px] h-4 font-mono border-primary/20 text-primary px-1 py-0">
+                                                {String(c.sha).substring(0, 7)}
+                                            </Badge>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </motion.div>
+                    )}
 
                     <ActivityFeed />
 

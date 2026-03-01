@@ -341,6 +341,8 @@ exports.getGitHubRepos = async (req, res) => {
     const repos = response.data.map(repo => ({
       id: repo.id,
       name: repo.name,
+      fullName: repo.full_name,
+      owner: repo.owner?.login || repo.full_name?.split('/')[0] || '',
       description: repo.description || "No description",
       language: repo.language || "Unknown",
       isPrivate: repo.private,
@@ -354,5 +356,17 @@ exports.getGitHubRepos = async (req, res) => {
   } catch (err) {
     console.error('[Fetch Repos Error]', err.response?.data || err);
     res.status(500).json({ error: 'Failed to fetch repos' });
+  }
+};
+
+exports.getGitHubStatus = async (req, res) => {
+  try {
+    const userId = req.session.userId;
+    if (!userId) return res.json({ connected: false });
+
+    const identity = await UserIdentity.findOne({ userId, provider: 'github' });
+    return res.json({ connected: !!identity });
+  } catch (err) {
+    return res.json({ connected: false });
   }
 };

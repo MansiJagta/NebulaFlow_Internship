@@ -22,7 +22,7 @@ import { useAuth } from "@/contexts/AuthContext";
 
 const RepositorySelection = () => {
     const navigate = useNavigate();
-    const { user, role, logout } = useAuth();
+    const { user, role, logout, setRepo } = useAuth();
 
     const [isConnected, setIsConnected] = useState(false);
     const [isConnecting, setIsConnecting] = useState(false);
@@ -63,14 +63,26 @@ const RepositorySelection = () => {
         (repo.description || "").toLowerCase().includes(searchQuery.toLowerCase())
     );
 
-    const handleLinkWorkspace = (repoId) => {
-        setSyncing(prev => ({ ...prev, [repoId]: true }));
+    const handleLinkWorkspace = (repo) => {
+        setSyncing(prev => ({ ...prev, [repo.id]: true }));
 
-        // Simulate linking repo
+        // Save the full repo object so GitHub page & Members page can use it
+        setRepo({
+            id: repo.id,
+            name: repo.name,
+            full_name: repo.fullName || `${repo.owner || ''}/${repo.name}`,
+            description: repo.description,
+            language: repo.language,
+            stars: repo.stars,
+            forks: repo.forks,
+            owner: repo.owner || (repo.fullName || '').split('/')[0],
+            private: repo.isPrivate ?? repo.private ?? false,
+        });
+
         setTimeout(() => {
-            setSyncing(prev => ({ ...prev, [repoId]: false }));
+            setSyncing(prev => ({ ...prev, [repo.id]: false }));
             navigate(role === 'pm' ? "/pm/dashboard" : "/collaborator/dashboard");
-        }, 2000);
+        }, 800);
     };
 
     const getLanguageColor = (lang) => {
@@ -188,7 +200,7 @@ const RepositorySelection = () => {
                                     </div>
                                     <div className="p-6 pt-0 mt-auto">
                                         <Button
-                                            onClick={() => handleLinkWorkspace(repo.id)}
+                                            onClick={() => handleLinkWorkspace(repo)}
                                             disabled={syncing[repo.id]}
                                             className="w-full bg-white/5 hover:bg-white/10 border border-white/10 text-white"
                                         >

@@ -16,6 +16,10 @@ export const AuthProvider = ({ children }) => {
         return saved ? JSON.parse(saved) : null;
     });
     const [token, setToken] = useState(() => localStorage.getItem('nebula-token'));
+    const [selectedRepo, setSelectedRepoState] = useState(() => {
+        const saved = localStorage.getItem('nebula-selected-repo');
+        return saved ? JSON.parse(saved) : null;
+    });
 
     const syncUser = useCallback((apiUser, nextToken) => {
         if (!apiUser) {
@@ -40,6 +44,29 @@ export const AuthProvider = ({ children }) => {
             setToken(nextToken);
             localStorage.setItem('nebula-token', nextToken);
         }
+    }, []);
+
+    /** Persist the selected GitHub repo so all pages can read it */
+    const setRepo = useCallback((repo) => {
+        if (!repo) {
+            setSelectedRepoState(null);
+            localStorage.removeItem('nebula-selected-repo');
+            return;
+        }
+        // Normalise fields – repo object comes from /api/auth/github/repos
+        const normalised = {
+            id: repo.id,
+            name: repo.name,
+            fullName: repo.full_name || repo.fullName || repo.name,
+            description: repo.description || '',
+            language: repo.language || null,
+            stars: repo.stars ?? repo.stargazers_count ?? 0,
+            forks: repo.forks ?? repo.forks_count ?? 0,
+            owner: repo.owner || repo.fullName?.split('/')[0] || repo.name,
+            private: repo.private ?? repo.isPrivate ?? false,
+        };
+        setSelectedRepoState(normalised);
+        localStorage.setItem('nebula-selected-repo', JSON.stringify(normalised));
     }, []);
 
     const login = useCallback(async (email, password) => {
@@ -96,6 +123,8 @@ export const AuthProvider = ({ children }) => {
         localStorage.removeItem('nebula-user');
         setToken(null);
         localStorage.removeItem('nebula-token');
+        setSelectedRepoState(null);
+        localStorage.removeItem('nebula-selected-repo');
     }, []);
 
     useEffect(() => {
@@ -128,13 +157,15 @@ export const AuthProvider = ({ children }) => {
             role: user?.role ?? null,
             isAuthenticated: !!user,
             token,
+            selectedRepo,
+            setRepo,
             login,
             register,
             selectRole,
             logout,
+            API_BASE_URL,
         }}>
             {children}
         </AuthContext.Provider>
     );
 };
-
