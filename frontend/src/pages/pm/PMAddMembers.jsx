@@ -25,13 +25,13 @@ const FALLBACK_INVITES = [
 
 const PMAddMembers = () => {
     const navigate = useNavigate();
-    const { selectedRepo, API_BASE_URL } = useAuth();
+    const { user, selectedRepo, API_BASE_URL } = useAuth();
 
     const [email, setEmail] = useState('');
     const [githubUsername, setGithubUsername] = useState('');
     const [role, setRole] = useState('Developer');
     const [isInviting, setIsInviting] = useState(false);
-    const [inviteResult, setInviteResult] = useState(null); // { emailSent, githubInvited, errors }
+    const [inviteResult, setInviteResult] = useState(null);
     const [invites, setInvites] = useState(FALLBACK_INVITES);
     const [members, setMembers] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -108,6 +108,8 @@ const PMAddMembers = () => {
                     role,
                     repoOwner: owner || undefined,
                     repoName: selectedRepo?.name || undefined,
+                    senderEmail: user?.email || undefined,
+                    senderName: user?.name || undefined,
                 },
                 { withCredentials: true }
             );
@@ -190,7 +192,7 @@ const PMAddMembers = () => {
                             </div>
                         )}
                         {inviteResult.errors?.length > 0 && inviteResult.errors.map((e, i) => (
-                            <div key={i} className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs">
+                            <div key={i} className="flex items-start gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
                                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />{e}
                             </div>
                         ))}

@@ -213,6 +213,11 @@ exports.handleGoogleCallback = async (req, res) => {
 
     if (userIdentity) {
       user = await User.findById(userIdentity.userId);
+      // Always update tokens so they stay fresh
+      userIdentity.accessTokenEncrypted = accessToken;
+      if (refreshToken) userIdentity.refreshTokenEncrypted = refreshToken;
+      userIdentity.tokenExpiresAt = expiresIn ? new Date(Date.now() + expiresIn * 1000) : null;
+      await userIdentity.save();
     } else {
       user = await User.findOne({ email });
 

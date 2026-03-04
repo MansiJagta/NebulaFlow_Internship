@@ -9,7 +9,7 @@ const {
   connectGitHub,
   githubCallback,
   getGitHubRepos,
-  getGitHubStatus
+  getGitHubStatus,
 } = require('../controllers/authController');
 
 const router = express.Router();
@@ -28,4 +28,5 @@ router.get('/github', connectGitHub);
 router.get('/github/callback', githubCallback);
 router.get('/github/repos', getGitHubRepos);
 router.get('/github/status', getGitHubStatus);
+
 module.exports = router;
