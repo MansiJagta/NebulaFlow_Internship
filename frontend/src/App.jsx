@@ -7,6 +7,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import AppLayout from "@/components/layout/AppLayout";
 
+import Landing from "@/pages/Landing";
 import Login from "@/pages/Login";
 import Signup from "@/pages/Signup";
 import RepositorySelection from "@/pages/RepositorySelection";
@@ -37,7 +38,7 @@ const App = () => (
                 <BrowserRouter>
                     <Routes>
                         {/* Public */}
-                        <Route path="/" element={<Navigate to="/login" replace />} />
+                        <Route path="/" element={<Landing />} />
                         <Route path="/login" element={<Login />} />
                         <Route path="/signup" element={<Signup />} />
                         <Route path="/repository-selection" element={<RepositorySelection />} />

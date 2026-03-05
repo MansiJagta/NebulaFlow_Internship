@@ -19,6 +19,14 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+    DropdownMenu,
+    DropdownMenuTrigger,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 
 const RepositorySelection = () => {
     const navigate = useNavigate();
@@ -120,10 +128,47 @@ const RepositorySelection = () => {
                                 >
                                     Create Collaboration
                                 </Button>
-                                <Avatar className="h-10 w-10 border-2 border-white/10 hover:border-nebula-cyan/50 transition-colors">
-                                    <AvatarImage src={`https://github.com/${user?.username}.png`} />
-                                    <AvatarFallback>{user?.name?.substring(0, 2).toUpperCase() || "US"}</AvatarFallback>
-                                </Avatar>
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <button className="flex items-center gap-3 focus:outline-none">
+                                            <div className="text-right hidden md:block">
+                                                <div className="text-sm font-medium text-white">{user?.name || "User"}</div>
+                                                <div className="text-xs text-white/50">
+                                                    {role || "collaborator"}
+                                                </div>
+                                            </div>
+                                            <Avatar className="h-10 w-10 border-2 border-white/10 hover:border-nebula-cyan/50 transition-colors">
+                                                <AvatarImage src={user?.avatar} />
+                                                <AvatarFallback>{user?.name?.substring(0, 2).toUpperCase() || "US"}</AvatarFallback>
+                                            </Avatar>
+                                        </button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="min-w-[10rem]">
+                                        <DropdownMenuLabel>
+                                            <div className="flex flex-col">
+                                                <span className="text-sm font-semibold">{user?.name || "User"}</span>
+                                                <span className="text-xs text-muted-foreground">{role || "collaborator"}</span>
+                                            </div>
+                                        </DropdownMenuLabel>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem
+                                            onClick={() => navigate("/settings")}
+                                            className="cursor-pointer"
+                                        >
+                                            Settings
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                            onClick={async () => {
+                                                await logout();
+                                                navigate("/login");
+                                            }}
+                                            className="cursor-pointer text-red-400 focus:text-red-400"
+                                        >
+                                            <LogOut className="w-4 h-4 mr-2" />
+                                            Logout
+                                        </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
                             </div>
                         ) : (
                             <Button variant="ghost" className="text-white/70 hover:text-white hover:bg-white/10" disabled>
