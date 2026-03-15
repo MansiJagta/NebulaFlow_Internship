@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import axios from 'axios';
 import { motion } from 'framer-motion';
-import { jiraTickets, statusColumns, statusLabels, priorityColors, typeIcons } from '@/data/jiraMockData';
+import { useAuth } from '@/contexts/AuthContext';
+import { statusColumns, statusLabels, priorityColors, typeIcons } from '@/data/jiraMockData';
 import { List, LayoutGrid, Calendar as CalendarIcon, Search, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,12 +12,9 @@ import { sortableKeyboardCoordinates, useSortable, SortableContext, verticalList
 import { CSS } from '@dnd-kit/utilities';
 import { DonutChart } from '@/components/common/Charts';
 
-// Use a simplified mock for "My Issues"
-const myTickets = jiraTickets.filter(t => t.assignee.includes('Alice'));
-
 // --- DND Components ---
 const SortableTicket = ({ ticket }) => {
-    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: ticket.id });
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: ticket.issueKey });
 
     const style = {
         transform: CSS.Transform.toString(transform),
@@ -36,7 +35,7 @@ const JiraCard = ({ ticket, isOverlay }) => (
             <p className="text-sm font-medium text-foreground leading-snug group-hover:text-primary transition-colors">{ticket.title}</p>
         </div>
         <div className="flex items-center gap-2 mb-3">
-            <span className="text-xs text-muted-foreground font-mono bg-muted/30 px-1 rounded">{ticket.id}</span>
+            <span className="text-xs text-muted-foreground font-mono bg-muted/30 px-1 rounded">{ticket.issueKey}</span>
             <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${priorityColors[ticket.priority]}`}>
                 {ticket.priority}
             </span>
@@ -49,19 +48,44 @@ const JiraCard = ({ ticket, isOverlay }) => (
                 {ticket.type === 'task' && <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />}
             </div>
             <div className="flex items-center gap-2">
-                <span className="text-xs bg-muted/40 text-muted-foreground px-1.5 rounded min-w-[20px] text-center">{ticket.points}</span>
+                <span className="text-xs bg-muted/40 text-muted-foreground px-1.5 rounded min-w-[20px] text-center">{ticket.storyPoints}</span>
             </div>
         </div>
     </div>
 );
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
 const CollaboratorJiraPage = () => {
+    const { user, token } = useAuth();
     const [view, setView] = useState('list'); // Default to list for focus
-    const [items, setItems] = useState(myTickets);
+    const [items, setItems] = useState([]);
     const [activeId, setActiveId] = useState(null);
     const [search, setSearch] = useState('');
 
-    const filteredItems = items.filter(t => t.title.toLowerCase().includes(search.toLowerCase()) || t.id.toLowerCase().includes(search.toLowerCase()));
+    useEffect(() => {
+        const load = async () => {
+            try {
+                const headers = token ? { Authorization: `Bearer ${token}` } : {};
+                const res = await axios.get(`${API_BASE_URL}/api/pm/issues`, {
+                    headers,
+                    withCredentials: true,
+                });
+                const assigned = res.data.filter(issue =>
+                    issue.assigneeUser && user?.id
+                        ? String(issue.assigneeUser._id) === String(user.id)
+                        : false
+                );
+                setItems(assigned);
+            } catch (err) {
+                console.error('[CollaboratorJiraPage] failed to load issues', err);
+            }
+        };
+
+        if (user) load();
+    }, [user, token]);
+
+    const filteredItems = items.filter(t => t.title.toLowerCase().includes(search.toLowerCase()) || t.issueKey?.toLowerCase().includes(search.toLowerCase()));
 
     const sensors = useSensors(
         useSensor(PointerSensor),
@@ -77,13 +101,13 @@ const CollaboratorJiraPage = () => {
         const activeId = active.id;
         const overId = over.id;
 
-        if (statusColumns.includes(overId) || items.find(i => i.id === overId)) {
+        if (statusColumns.includes(overId) || items.find(i => i.issueKey === overId)) {
             let newStatus = overId;
-            const overItem = items.find(i => i.id === overId);
+            const overItem = items.find(i => i.issueKey === overId);
             if (overItem) newStatus = overItem.status;
 
             setItems(prev => prev.map(t =>
-                t.id === activeId ? { ...t, status: newStatus } : t
+                t.issueKey === activeId ? { ...t, status: newStatus } : t
             ));
         }
         setActiveId(null);
@@ -160,9 +184,9 @@ const CollaboratorJiraPage = () => {
                                     </div>
 
                                     <div className="flex-1 overflow-y-auto px-1 space-y-2 min-h-[150px]">
-                                        <SortableContext id={status} items={filteredItems.filter(t => t.status === status).map(t => t.id)} strategy={verticalListSortingStrategy}>
+                                        <SortableContext id={status} items={filteredItems.filter(t => t.status === status).map(t => t.issueKey)} strategy={verticalListSortingStrategy}>
                                             {filteredItems.filter(t => t.status === status).map(ticket => (
-                                                <SortableTicket key={ticket.id} ticket={ticket} />
+                                                <SortableTicket key={ticket._id} ticket={ticket} />
                                             ))}
                                         </SortableContext>
                                     </div>
@@ -170,7 +194,7 @@ const CollaboratorJiraPage = () => {
                             ))}
                         </div>
                         <DragOverlay dropAnimation={dropAnimation}>
-                            {activeId ? <JiraCard ticket={items.find(t => t.id === activeId)} isOverlay /> : null}
+                            {activeId ? <JiraCard ticket={items.find(t => t.issueKey === activeId)} isOverlay /> : null}
                         </DragOverlay>
                     </DndContext>
                 )}
@@ -191,14 +215,16 @@ const CollaboratorJiraPage = () => {
                             </thead>
                             <tbody>
                                 {filteredItems.map(ticket => (
-                                    <tr key={ticket.id} className="border-b border-border/10 hover:bg-muted/5 transition-colors group">
+                                    <tr key={ticket._id} className="border-b border-border/10 hover:bg-muted/5 transition-colors group">
                                         <td className="p-3">{typeIcons[ticket.type]}</td>
-                                        <td className="p-3 font-mono text-muted-foreground text-xs">{ticket.id}</td>
+                                        <td className="p-3 font-mono text-muted-foreground text-xs">{ticket.issueKey}</td>
                                         <td className="p-3 font-medium text-foreground group-hover:text-primary transition-colors cursor-pointer max-w-md truncate">{ticket.title}</td>
                                         <td className="p-3"><span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${priorityColors[ticket.priority]}`}>{ticket.priority}</span></td>
                                         <td className="p-3"><Badge variant="outline" className="capitalize font-normal text-xs">{statusLabels[ticket.status]}</Badge></td>
-                                        <td className="p-3 text-right font-mono text-muted-foreground">{ticket.points}</td>
-                                        <td className="p-3 text-xs text-muted-foreground">Nov {Math.floor(Math.random() * 20) + 10}</td>
+                                        <td className="p-3 text-right font-mono text-muted-foreground">{ticket.storyPoints}</td>
+                                        <td className="p-3 text-xs text-muted-foreground">
+                                            {ticket.dueDate || '—'}
+                                        </td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -221,8 +247,8 @@ const CollaboratorJiraPage = () => {
                                             <span className={`text-xs ${day === 14 ? 'w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold' : 'text-muted-foreground'}`}>{day}</span>
                                             <div className="space-y-1 mt-1">
                                                 {dayTickets.map(t => (
-                                                    <div key={t.id} className="text-[9px] bg-primary/10 text-primary px-1 py-0.5 rounded truncate border-l-2 border-primary cursor-pointer hover:bg-primary/20">
-                                                        {t.id}
+                                                    <div key={t._id} className="text-[9px] bg-primary/10 text-primary px-1 py-0.5 rounded truncate border-l-2 border-primary cursor-pointer hover:bg-primary/20">
+                                                        {t.issueKey}
                                                     </div>
                                                 ))}
                                             </div>
