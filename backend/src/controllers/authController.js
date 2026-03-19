@@ -257,23 +257,40 @@ exports.handleGoogleCallback = async (req, res) => {
     return res.status(500).send('Google authentication failed');
   }
 };
+
+
+
+
+// -------- Connect GitHub --------
 exports.connectGitHub = (req, res) => {
+  const userId = req.session.userId;
+  if (!userId) return res.status(401).send('Login required');
+
   const params = new URLSearchParams({
     client_id: process.env.GITHUB_CLIENT_ID,
-    redirect_uri: process.env.GITHUB_CALLBACK_URL, // must match GitHub app callback
-    scope: 'repo user',
+    redirect_uri: process.env.GITHUB_CALLBACK_URL,
+    scope: 'repo user user:email', // include emails
     allow_signup: 'true',
   });
+
   const url = `https://github.com/login/oauth/authorize?${params.toString()}`;
   res.redirect(url);
 };
 
+// GitHub OAuth callback
 exports.githubCallback = async (req, res) => {
   const { code } = req.query;
   if (!code) return res.status(400).send('No code provided');
 
   try {
-    // Exchange code for token
+    // 1️⃣ Get logged-in platform user
+    const userId = req.session.userId;
+    if (!userId) return res.status(401).send('Login required');
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(401).send('User not found');
+
+    // 2️⃣ Exchange code for GitHub access token
     const tokenRes = await axios.post(
       'https://github.com/login/oauth/access_token',
       {
@@ -283,31 +300,45 @@ exports.githubCallback = async (req, res) => {
       },
       { headers: { Accept: 'application/json' } }
     );
-
     const accessToken = tokenRes.data.access_token;
+    if (!accessToken) return res.status(400).send('No access token received');
 
-    // Get GitHub user
-    const githubUser = await axios.get('https://api.github.com/user', {
+    // 3️⃣ Get GitHub user emails
+    const emailsRes = await axios.get('https://api.github.com/user/emails', {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
 
-    const providerUserId = githubUser.data.id.toString();
-    const username = githubUser.data.login;
+    const githubEmails = emailsRes.data
+      .filter(e => e.verified)
+      .map(e => e.email.toLowerCase());
 
-    // Get logged-in user from session
-    const userId = req.session.userId;
-    if (!userId) return res.status(401).send('Login required first');
+    // 4️⃣ Check if GitHub emails match logged-in user's email
+    if (!githubEmails.includes(user.email.toLowerCase())) {
+      return res.status(403).send(
+        `GitHub account email (${githubEmails[0]}) does not match your platform email (${user.email})`
+      );
+    }
 
-    // Save GitHub info in DB
-    await UserIdentity.findOneAndUpdate(
-      { provider: 'github', providerUserId },
-      { userId, provider: 'github', providerUserId, username, accessTokenEncrypted: accessToken },
-      { upsert: true, new: true }
-    );
+    // 5️⃣ Get GitHub user info
+    const githubUserRes = await axios.get('https://api.github.com/user', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const githubUser = githubUserRes.data;
 
-    req.session.githubToken = accessToken;
+    // 6️⃣ Remove any previous GitHub identity for this platform user
+    await UserIdentity.findOneAndDelete({ userId, provider: 'github' });
 
-    // Redirect back to frontend
+    // 7️⃣ Save GitHub identity for this platform user
+    await UserIdentity.create({
+      userId: user._id.toString(),
+      provider: 'github',
+      providerUserId: githubUser.id.toString(),
+      username: githubUser.login,
+      accessTokenEncrypted: accessToken,
+      tokenExpiresAt: null,
+    });
+
+    // 8️⃣ Redirect to frontend repository selection
     res.redirect(`${process.env.FRONTEND_URL}/repository-selection`);
   } catch (err) {
     console.error('[GitHub OAuth Error]', err.response?.data || err);
@@ -315,41 +346,34 @@ exports.githubCallback = async (req, res) => {
   }
 };
 
+// Fetch GitHub repos for logged-in user
 exports.getGitHubRepos = async (req, res) => {
   try {
     const userId = req.session.userId;
-
-    if (!userId) {
-      return res.status(401).json({ error: 'Not logged in' });
-    }
+    if (!userId) return res.status(401).json({ error: 'Not logged in' });
 
     const identity = await UserIdentity.findOne({
       userId,
       provider: 'github',
     });
 
-    if (!identity) {
+    if (!identity || !identity.accessTokenEncrypted) {
       return res.status(400).json({ error: 'GitHub not connected' });
     }
 
     const token = identity.accessTokenEncrypted;
 
-    const response = await axios.get(
-      'https://api.github.com/user/repos',
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
-    );
+    const response = await axios.get('https://api.github.com/user/repos', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
 
     const repos = response.data.map(repo => ({
       id: repo.id,
       name: repo.name,
       fullName: repo.full_name,
-      owner: repo.owner?.login || repo.full_name?.split('/')[0] || '',
-      description: repo.description || "No description",
-      language: repo.language || "Unknown",
+      owner: repo.owner?.login || '',
+      description: repo.description || 'No description',
+      language: repo.language || 'Unknown',
       isPrivate: repo.private,
       updatedAt: repo.updated_at,
       stars: repo.stargazers_count,
@@ -357,13 +381,13 @@ exports.getGitHubRepos = async (req, res) => {
     }));
 
     res.json(repos);
-
   } catch (err) {
     console.error('[Fetch Repos Error]', err.response?.data || err);
     res.status(500).json({ error: 'Failed to fetch repos' });
   }
 };
 
+// Check GitHub connection status for logged-in user
 exports.getGitHubStatus = async (req, res) => {
   try {
     const userId = req.session.userId;
