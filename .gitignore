@@ -48,8 +48,14 @@ frontend/coverage/
 
 backend/node_modules/
 backend/dist/
+backend/coverage/
 backend/.env
 backend/.env.local
+backend/tmp/
+
+# Runtime artifacts
+*.pid
+*.pid.lock
 
 ###################################
 # DOCKER
