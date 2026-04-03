@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const User = require('../models/User');
 const Issue = require('../models/Issue');
 const Sprint = require('../models/Sprint');
+const Workspace = require('../models/Workspace');
 
 // Helper to generate a unique issue key
 function generateIssueKey() {
@@ -9,11 +10,38 @@ function generateIssueKey() {
   return `NEB-${randomNum}`;
 }
 
+async function getUserWorkspace(userId, workspaceId = null) {
+  if (workspaceId) {
+    const ws = await Workspace.findById(workspaceId).populate('members.userId', 'fullName email avatarUrl role');
+    if (ws) return ws;
+  }
+
+  return await Workspace.findOne({ 'members.userId': userId }).populate('members.userId', 'fullName email avatarUrl role');
+}
+
 // --- Users ---
 exports.getUsers = async (req, res) => {
   try {
-    const users = await User.find({ isActive: true }).select('fullName email role avatarUrl');
-    res.json(users);
+    const workspaceId = req.query.workspaceId || null;
+    const workspace = await getUserWorkspace(req.user._id, workspaceId);
+
+    if (!workspace) {
+      // fallback to global active users when workspace is absent
+      const users = await User.find({ isActive: true }).select('fullName email role avatarUrl');
+      return res.json(users);
+    }
+
+    const members = workspace.members
+      .filter(m => m.userId && m.userId.isActive !== false)
+      .map(m => ({
+        _id: m.userId._id,
+        fullName: m.userId.fullName,
+        email: m.userId.email,
+        avatarUrl: m.userId.avatarUrl,
+        role: m.role || m.userId.role || 'collaborator',
+      }));
+
+    res.json(members);
   } catch (err) {
     console.error('[pm] getUsers failed', err);
     res.status(500).json({ error: 'Failed to load users' });
@@ -34,8 +62,13 @@ exports.getSprints = async (req, res) => {
 // --- Issues ---
 exports.getIssues = async (req, res) => {
   try {
-    const { assigneeUserId, sprintId } = req.query;
+    const { assigneeUserId, sprintId, workspaceId } = req.query;
     const filters = {};
+
+    const workspace = await getUserWorkspace(req.user._id, workspaceId);
+    if (workspace) {
+      filters.workspaceId = workspace._id;
+    }
 
     if (sprintId) {
       filters.sprintId = sprintId;
@@ -48,7 +81,8 @@ exports.getIssues = async (req, res) => {
     const issues = await Issue.find(filters)
       .sort({ createdAt: -1 })
       .populate('assigneeUserId', 'fullName email avatarUrl')
-      .populate('reporterUserId', 'fullName email avatarUrl');
+      .populate('reporterUserId', 'fullName email avatarUrl')
+      .populate('sprintId', 'name');
 
     const result = issues.map(issue => {
       const assigneeUser = issue.assigneeUserId
@@ -76,8 +110,8 @@ exports.getIssues = async (req, res) => {
         assignee: assigneeUser ? assigneeUser.fullName : null,
         assigneeAvatar: assigneeUser ? assigneeUser.avatarUrl : null,
         reporter: reporterUser ? reporterUser.fullName : null,
-        reporterAvatar: reporterUser ? reporterUser.avatarUrl : null,
-        priority: issue.priority === 1 ? 'high' : issue.priority === 2 ? 'medium' : 'low',
+        reporterAvatar: reporterUser ? reporterUser.avatarUrl : null, sprint: issue.sprintId ? issue.sprintId.name : 'Backlog',
+        sprintId: issue.sprintId ? issue.sprintId._id : null, priority: issue.priority === 1 ? 'high' : issue.priority === 2 ? 'medium' : 'low',
         points: issue.storyPoints,
         status: issue.status,
       };
@@ -111,10 +145,27 @@ exports.createIssue = async (req, res) => {
     const issueKey = generateIssueKey();
     const reporterUserId = req.user._id;
 
+    // determine workspace based on request or membership
+    const workspace = await getUserWorkspace(req.user._id, req.body.workspaceId || null);
+    let workspaceIdValue = workspace ? workspace._id : null;
+
+    if (!workspaceIdValue) {
+      return res.status(400).json({ error: 'Workspace context is required for issue creation' });
+    }
+
+    // validate assignee belongs to the workspace
+    if (assigneeUserId) {
+      const isMember = workspace.members.some(m => m.userId._id.toString() === assigneeUserId.toString());
+      if (!isMember) {
+        return res.status(400).json({ error: 'Assignee must be a member of the current workspace' });
+      }
+    }
+
     const newIssue = await Issue.create({
       issueKey,
       title,
       description,
+      workspaceId: workspaceIdValue,
       assigneeUserId: assigneeUserId || null,
       reporterUserId,
       priority: priority === 'high' ? 1 : priority === 'low' ? 3 : 2,
@@ -126,7 +177,8 @@ exports.createIssue = async (req, res) => {
 
     const populated = await Issue.findById(newIssue._id)
       .populate('assigneeUserId', 'fullName email avatarUrl')
-      .populate('reporterUserId', 'fullName email avatarUrl');
+      .populate('reporterUserId', 'fullName email avatarUrl')
+      .populate('sprintId', 'name');
 
     const assigneeUser = populated.assigneeUserId
       ? {
@@ -154,6 +206,8 @@ exports.createIssue = async (req, res) => {
       assigneeAvatar: assigneeUser ? assigneeUser.avatarUrl : null,
       reporter: reporterUser ? reporterUser.fullName : null,
       reporterAvatar: reporterUser ? reporterUser.avatarUrl : null,
+      sprint: populated.sprintId ? populated.sprintId.name : 'Backlog',
+      sprintId: populated.sprintId ? populated.sprintId._id : null,
       priority:
         populated.priority === 1
           ? 'high'
@@ -182,7 +236,8 @@ exports.updateIssue = async (req, res) => {
 
     const issue = await Issue.findByIdAndUpdate(id, updates, { new: true })
       .populate('assigneeUserId', 'fullName email avatarUrl')
-      .populate('reporterUserId', 'fullName email avatarUrl');
+      .populate('reporterUserId', 'fullName email avatarUrl')
+      .populate('sprintId', 'name');
 
     if (!issue) {
       return res.status(404).json({ error: 'Issue not found' });
@@ -214,6 +269,8 @@ exports.updateIssue = async (req, res) => {
       assigneeAvatar: assigneeUser ? assigneeUser.avatarUrl : null,
       reporter: reporterUser ? reporterUser.fullName : null,
       reporterAvatar: reporterUser ? reporterUser.avatarUrl : null,
+      sprint: issue.sprintId ? issue.sprintId.name : 'Backlog',
+      sprintId: issue.sprintId ? issue.sprintId._id : null,
       priority:
         issue.priority === 1 ? 'high' : issue.priority === 3 ? 'low' : 'medium',
       points: issue.storyPoints,

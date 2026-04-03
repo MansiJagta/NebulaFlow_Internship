@@ -1,5 +1,5 @@
 import { useAuth } from '@/contexts/AuthContext';
-import { Bell, Search, Settings, LogOut } from 'lucide-react';
+import { Bell, Search, Settings, LogOut, LayoutDashboard, ChevronDown } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -42,21 +42,19 @@ const Navbar = () => {
                     <Bell className="w-5 h-5" />
                     <span className="absolute -top-1 -right-1 w-2 h-2 bg-accent rounded-full animate-pulse" />
                 </motion.button>
-                <button className="text-muted-foreground hover:text-foreground transition-colors">
-                    <Settings className="w-5 h-5" />
-                </button>
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                        <button className="flex items-center gap-2 focus:outline-none">
-                            <Avatar className="h-8 w-8 border border-border/40">
+                        <button className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted/50 transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50 group">
+                            <Avatar className="h-8 w-8 border-2 border-primary/30 group-hover:border-primary/60 transition-colors">
                                 <AvatarImage src={user?.avatar} alt={user?.name} />
-                                <AvatarFallback>
+                                <AvatarFallback className="bg-gradient-to-br from-cyan-400 to-purple-500 text-white font-bold">
                                     {user?.name?.charAt(0).toUpperCase() || 'U'}
                                 </AvatarFallback>
                             </Avatar>
+                            <ChevronDown className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
                         </button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="min-w-[10rem]">
+                    <DropdownMenuContent align="end" className="min-w-[200px]">
                         <DropdownMenuLabel>
                             <div className="flex flex-col">
                                 <span className="text-sm font-semibold">{user?.name || 'User'}</span>
@@ -65,12 +63,20 @@ const Navbar = () => {
                         </DropdownMenuLabel>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
+                            onClick={() => navigate(role === 'pm' ? '/pm/dashboard' : '/collaborator/dashboard')}
+                            className="cursor-pointer"
+                        >
+                            <LayoutDashboard className="w-4 h-4 mr-2" />
+                            Dashboard
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
                             onClick={() => navigate('/settings')}
                             className="cursor-pointer"
                         >
                             <Settings className="w-4 h-4 mr-2" />
                             Settings
                         </DropdownMenuItem>
+                        <DropdownMenuSeparator />
                         <DropdownMenuItem
                             onClick={async () => {
                                 await logout();

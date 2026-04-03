@@ -53,6 +53,19 @@ const issueSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
     },
+    milestoneId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Milestone',
+    },
+    githubPrUrl: {
+      type: String,
+    },
+    githubIssueNumber: {
+      type: Number,
+    },
+    dueDate: {
+      type: Date,
+    },
   },
   {
     timestamps: {

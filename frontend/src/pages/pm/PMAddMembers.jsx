@@ -25,7 +25,7 @@ const FALLBACK_INVITES = [
 
 const PMAddMembers = () => {
     const navigate = useNavigate();
-    const { user, selectedRepo, API_BASE_URL } = useAuth();
+    const { user, selectedRepo, token, API_BASE_URL } = useAuth();
 
     const [email, setEmail] = useState('');
     const [githubUsername, setGithubUsername] = useState('');
@@ -48,6 +48,28 @@ const PMAddMembers = () => {
             setLoading(true);
             setError(null);
             try {
+                // If workspace exists, use workspace members as source of truth
+                let workspaceMembers = null;
+                try {
+                    const wsRes = await axios.get(`${API_BASE_URL}/api/workspace/me`, {
+                        withCredentials: true,
+                    });
+                    if (wsRes.data?.members) {
+                        workspaceMembers = wsRes.data.members.map((m) => ({
+                            id: m._id,
+                            name: m.fullName || m.email,
+                            login: m.email ? m.email.split('@')[0] : '',
+                            email: m.email,
+                            role: m.role || 'collaborator',
+                            avatarUrl: m.avatarUrl || '',
+                            lastActive: 'Workspace Member',
+                            profileUrl: '',
+                        }));
+                    }
+                } catch (workspaceErr) {
+                    console.warn('[PMAddMembers] workspace/me fetch failed', workspaceErr);
+                }
+
                 const owner = selectedRepo.owner
                     || (selectedRepo.fullName?.includes('/')
                         ? selectedRepo.fullName.split('/')[0]
@@ -60,25 +82,28 @@ const PMAddMembers = () => {
                     return;
                 }
 
+                const headers = token ? { Authorization: `Bearer ${token}` } : {};
                 const res = await axios.get(
                     `${API_BASE_URL}/api/github/repo/collaborators?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}`,
-                    { withCredentials: true }
+                    { headers, withCredentials: true }
                 );
 
-                if (res.data && res.data.length > 0) {
-                    setMembers(res.data.map((c, i) => ({
-                        id: String(c.login || i),
-                        name: c.name || c.login,
-                        login: c.login,
-                        email: `${c.login}@github.com`,
-                        role: c.role || 'Collaborator',
-                        avatarUrl: c.avatarUrl || '',
-                        lastActive: 'GitHub',
-                        profileUrl: c.profileUrl,
-                    })));
+                const githubMembers = (res.data && res.data.length > 0) ? res.data.map((c, i) => ({
+                    id: String(c.login || i),
+                    name: c.name || c.login,
+                    login: c.login,
+                    email: `${c.login}@github.com`,
+                    role: c.role || 'Collaborator',
+                    avatarUrl: c.avatarUrl || '',
+                    lastActive: 'GitHub',
+                    profileUrl: c.profileUrl,
+                })) : FALLBACK_MEMBERS;
+
+                // Source-of-truth: workspace member roster if available
+                if (workspaceMembers && workspaceMembers.length > 0) {
+                    setMembers(workspaceMembers);
                 } else {
-                    // Empty collab list — fall back to mock so the UI isn't blank
-                    setMembers(FALLBACK_MEMBERS);
+                    setMembers(githubMembers);
                 }
             } catch (err) {
                 console.error('[PMAddMembers] collaborators fetch error:', err);
@@ -100,6 +125,7 @@ const PMAddMembers = () => {
             const owner = selectedRepo?.owner
                 || (selectedRepo?.fullName?.includes('/') ? selectedRepo.fullName.split('/')[0] : null);
 
+            const headers = token ? { Authorization: `Bearer ${token}` } : {};
             const res = await axios.post(
                 `${API_BASE_URL}/api/github/invite`,
                 {
@@ -111,7 +137,7 @@ const PMAddMembers = () => {
                     senderEmail: user?.email || undefined,
                     senderName: user?.name || undefined,
                 },
-                { withCredentials: true }
+                { headers, withCredentials: true }
             );
 
             setInviteResult(res.data);

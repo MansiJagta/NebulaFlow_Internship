@@ -7,10 +7,12 @@ import { List, LayoutGrid, Calendar as CalendarIcon, Search, Plus } from 'lucide
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { DndContext, DragOverlay, closestCorners, KeyboardSensor, PointerSensor, useSensor, useSensors, defaultDropAnimationSideEffects } from '@dnd-kit/core';
 import { sortableKeyboardCoordinates, useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { DonutChart } from '@/components/common/Charts';
+import CalendarView from '@/components/common/CalendarView';
 
 // --- DND Components ---
 const SortableTicket = ({ ticket }) => {
@@ -59,24 +61,38 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 const CollaboratorJiraPage = () => {
     const { user, token } = useAuth();
     const [view, setView] = useState('list'); // Default to list for focus
+    const [allIssues, setAllIssues] = useState([]); // Store all issues
+    const [taskScope, setTaskScope] = useState('my'); // Default to 'my' for collaborator
     const [items, setItems] = useState([]);
     const [activeId, setActiveId] = useState(null);
     const [search, setSearch] = useState('');
+    const [workspace, setWorkspace] = useState(null);
 
     useEffect(() => {
         const load = async () => {
             try {
                 const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+                // Load workspace first
+                const wsRes = await axios.get(`${API_BASE_URL}/api/workspace/me`, {
+                    headers,
+                    withCredentials: true,
+                });
+                setWorkspace(wsRes.data);
+
                 const res = await axios.get(`${API_BASE_URL}/api/pm/issues`, {
                     headers,
                     withCredentials: true,
                 });
+                setAllIssues(res.data);
+
+                // Initial set based on 'my'
                 const assigned = res.data.filter(issue =>
                     issue.assigneeUser && user?.id
                         ? String(issue.assigneeUser._id) === String(user.id)
                         : false
                 );
-                setItems(assigned);
+                setItems(taskScope === 'my' ? assigned : res.data);
             } catch (err) {
                 console.error('[CollaboratorJiraPage] failed to load issues', err);
             }
@@ -84,6 +100,19 @@ const CollaboratorJiraPage = () => {
 
         if (user) load();
     }, [user, token]);
+
+    useEffect(() => {
+        if (taskScope === 'my') {
+            const assigned = allIssues.filter(issue =>
+                issue.assigneeUser && user?.id
+                    ? String(issue.assigneeUser._id) === String(user.id)
+                    : false
+            );
+            setItems(assigned);
+        } else {
+            setItems(allIssues);
+        }
+    }, [taskScope, allIssues, user?.id]);
 
     const filteredItems = items.filter(t => t.title.toLowerCase().includes(search.toLowerCase()) || t.issueKey?.toLowerCase().includes(search.toLowerCase()));
 
@@ -149,6 +178,23 @@ const CollaboratorJiraPage = () => {
                             className="pl-9 h-9 bg-background/50 border-border/30"
                         />
                     </div>
+
+                    {/* Task Scope Toggle */}
+                    <div className="flex items-center bg-muted/30 p-1 rounded-lg">
+                        <button
+                            onClick={() => setTaskScope('my')}
+                            className={`px-3 py-1 rounded text-xs font-semibold transition-all ${taskScope === 'my' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                        >
+                            My Tasks
+                        </button>
+                        <button
+                            onClick={() => setTaskScope('team')}
+                            className={`px-3 py-1 rounded text-xs font-semibold transition-all ${taskScope === 'team' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                        >
+                            Team Tasks
+                        </button>
+                    </div>
+
                     {/* View Switcher */}
                     <div className="flex gap-1 bg-muted/30 p-1 rounded-lg ml-4">
                         {[
@@ -167,6 +213,27 @@ const CollaboratorJiraPage = () => {
                         ))}
                     </div>
                 </div>
+
+                {/* Team Members Panel */}
+                {workspace && workspace.members && (
+                    <div className="bg-card/50 border border-border/20 rounded-lg p-4">
+                        <h3 className="text-xs font-bold text-muted-foreground uppercase mb-3">👥 Team Members ({workspace.members.length})</h3>
+                        <div className="flex flex-wrap gap-2">
+                            {workspace.members.map(member => (
+                                <div key={member._id} className="flex items-center gap-2 bg-muted/20 px-3 py-1.5 rounded-lg border border-border/30 text-sm">
+                                    <Avatar className="w-6 h-6">
+                                        <AvatarImage src={member.avatarUrl} alt={member.fullName} />
+                                        <AvatarFallback className="text-[10px]">{member.fullName?.charAt(0) || '?'}</AvatarFallback>
+                                    </Avatar>
+                                    <div>
+                                        <p className="font-medium text-foreground text-xs">{member.fullName}</p>
+                                        <p className="text-[10px] text-muted-foreground capitalize">{member.role}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Content Area */}
@@ -233,30 +300,8 @@ const CollaboratorJiraPage = () => {
                 )}
 
                 {view === 'calendar' && (
-                    <div className="grid grid-cols-7 gap-px bg-border/30 rounded-lg overflow-hidden border border-border/30 h-[500px]">
-                        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
-                            <div key={d} className="bg-card p-2 text-center text-xs font-semibold text-muted-foreground uppercase">{d}</div>
-                        ))}
-                        {Array.from({ length: 35 }).map((_, i) => {
-                            const day = i - 2;
-                            const dayTickets = filteredItems.filter((_, idx) => (idx * 3 + 1) % 31 === day); // Deterministic random
-                            return (
-                                <div key={i} className={`bg-card min-h-[80px] p-2 ${day > 0 && day <= 31 ? '' : 'bg-muted/10'} hover:bg-muted/5 transition-colors`}>
-                                    {day > 0 && day <= 31 && (
-                                        <>
-                                            <span className={`text-xs ${day === 14 ? 'w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold' : 'text-muted-foreground'}`}>{day}</span>
-                                            <div className="space-y-1 mt-1">
-                                                {dayTickets.map(t => (
-                                                    <div key={t._id} className="text-[9px] bg-primary/10 text-primary px-1 py-0.5 rounded truncate border-l-2 border-primary cursor-pointer hover:bg-primary/20">
-                                                        {t.issueKey}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </>
-                                    )}
-                                </div>
-                            )
-                        })}
+                    <div className="h-full pr-2 pb-4">
+                        <CalendarView issues={filteredItems} />
                     </div>
                 )}
             </div>

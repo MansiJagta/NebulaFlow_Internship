@@ -1,5 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
     GitBranch,
     BarChart3,
@@ -10,12 +12,25 @@ import {
     ArrowRight,
     Github,
     Slack,
-    Briefcase
+    Briefcase,
+    LayoutDashboard,
+    Settings,
+    LogOut,
+    ChevronDown
 } from 'lucide-react';
+import {
+    DropdownMenu,
+    DropdownMenuTrigger,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 
 const Landing = () => {
     const navigate = useNavigate();
+    const { user, role, logout } = useAuth();
 
     const features = [
         {
@@ -61,7 +76,6 @@ const Landing = () => {
             {/* Navbar */}
             <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/10 bg-[#0B0C15]/50 backdrop-blur-xl h-20 transition-all duration-300">
                 <div className="container mx-auto h-full flex items-center justify-between px-4 lg:px-8">
-                    {/* Logo and Brand */}
                     <div className="flex items-center gap-4">
                         <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-nebula-cyan to-nebula-purple flex items-center justify-center shadow-lg shadow-nebula-cyan/20">
                             <span className="font-bold text-white text-lg">N</span>
@@ -71,7 +85,6 @@ const Landing = () => {
                         </h1>
                     </div>
 
-                    {/* Center Nav Links */}
                     <div className="hidden md:flex items-center gap-8">
                         <button
                             onClick={() => document.getElementById('home')?.scrollIntoView({ behavior: 'smooth' })}
@@ -99,21 +112,66 @@ const Landing = () => {
                         </button>
                     </div>
 
-                    {/* Right Side - Auth Buttons */}
                     <div className="flex items-center gap-4">
-                        <Button
-                            variant="ghost"
-                            className="text-white/70 hover:text-white hover:bg-white/10 hidden sm:inline-flex"
-                            onClick={() => navigate('/login')}
-                        >
-                            Login
-                        </Button>
-                        <Button
-                            className="bg-white text-black hover:bg-white/90 font-semibold px-6 rounded-full shadow-[0_0_20px_rgba(255,255,255,0.2)]"
-                            onClick={() => navigate('/signup')}
-                        >
-                            Register
-                        </Button>
+                        {user ? (
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <button className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted/30 transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50">
+                                        <Avatar className="h-10 w-10 border border-white/20">
+                                            <AvatarImage src={user.avatar} />
+                                            <AvatarFallback>{user.name?.substring(0, 2).toUpperCase() || 'US'}</AvatarFallback>
+                                        </Avatar>
+                                        <ChevronDown className="w-4 h-4 text-white/70" />
+                                    </button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="min-w-[160px]">
+                                    <DropdownMenuLabel>
+                                        <div className="flex flex-col">
+                                            <span className="text-sm font-semibold text-white">{user.name || 'User'}</span>
+                                            <span className="text-xs text-white/70">{role || 'collaborator'}</span>
+                                        </div>
+                                    </DropdownMenuLabel>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                        onClick={() => navigate(role === 'pm' ? '/pm/dashboard' : '/collaborator/dashboard')}
+                                    >
+                                        <LayoutDashboard className="w-4 h-4 mr-2" />
+                                        Dashboard
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => navigate('/settings')}>
+                                        <Settings className="w-4 h-4 mr-2" />
+                                        Settings
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                        onClick={async () => {
+                                            await logout();
+                                            navigate('/login');
+                                        }}
+                                        className="text-red-400"
+                                    >
+                                        <LogOut className="w-4 h-4 mr-2" />
+                                        Logout
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        ) : (
+                            <>
+                                <Button
+                                    variant="ghost"
+                                    className="text-white/70 hover:text-white hover:bg-white/10 hidden sm:inline-flex"
+                                    onClick={() => navigate('/login')}
+                                >
+                                    Login
+                                </Button>
+                                <Button
+                                    className="bg-white text-black hover:bg-white/90 font-semibold px-6 rounded-full"
+                                    onClick={() => navigate('/signup')}
+                                >
+                                    Register
+                                </Button>
+                            </>
+                        )}
                     </div>
                 </div>
             </nav>

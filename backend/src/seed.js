@@ -1,57 +1,36 @@
-const bcrypt = require('bcryptjs');
 const User = require('./models/User');
 const Sprint = require('./models/Sprint');
 const Issue = require('./models/Issue');
+const Workspace = require('./models/Workspace');
+const Milestone = require('./models/Milestone');
+const Meeting = require('./models/Meeting');
 
 async function seedDefaultData() {
   try {
-    const defaultPasswordHash = await bcrypt.hash('password', 10);
+    // DO NOT SEED USERS according to user instructions.
+    // Fetch the first workspace available (created by user post-signup).
+    const workspace = await Workspace.findOne().populate('members.userId');
+    
+    if (!workspace) {
+      console.log('[seed] No workspace found. Please create a workspace in the UI before seeding.');
+      return;
+    }
 
-    const findOrCreateUser = async ({ email, fullName, role }) => {
-      let user = await User.findOne({ email });
-      if (user) {
-        // Ensure users can login via email/password for demo purposes.
-        if (!user.passwordHash) {
-          user.passwordHash = defaultPasswordHash;
-          await user.save();
-        }
-        return user;
-      }
+    const members = workspace.members.map(m => m.userId);
+    const pmUser = workspace.members.find(m => m.role === 'pm')?.userId || members[0];
 
-      return User.create({
-        email,
-        fullName,
-        role,
-        isActive: true,
-        lastSeenAt: new Date(),
-        passwordHash: defaultPasswordHash,
-      });
-    };
+    if (members.length === 0) {
+      console.log('[seed] Workspace has no members to assign data to.');
+      return;
+    }
 
-    const pm = await findOrCreateUser({
-      email: 'pm@example.com',
-      fullName: 'Project Manager',
-      role: 'pm',
-    });
+    // 1. CLEAR EXISTING DEMO DATA for this workspace
+    console.log(`[seed] Clearing existing Issues, Milestones, and Meetings for Workspace: ${workspace.name}`);
+    await Issue.deleteMany({ workspaceId: workspace._id });
+    await Milestone.deleteMany({ workspaceId: workspace._id });
+    await Meeting.deleteMany({ workspaceId: workspace._id });
 
-    const alice = await findOrCreateUser({
-      email: 'alice@example.com',
-      fullName: 'Alice Chen',
-      role: 'collaborator',
-    });
-
-    const bob = await findOrCreateUser({
-      email: 'bob@example.com',
-      fullName: 'Bob Kumar',
-      role: 'collaborator',
-    });
-
-    const carol = await findOrCreateUser({
-      email: 'carol@example.com',
-      fullName: 'Carol Davis',
-      role: 'collaborator',
-    });
-
+    // 2. SEED SPRINT
     let sprint = await Sprint.findOne({ isActive: true });
     if (!sprint) {
       const sprintStart = new Date();
@@ -63,156 +42,129 @@ async function seedDefaultData() {
         name: 'Sprint 14',
         startsOn: sprintStart,
         endsOn: sprintEnd,
-        goal: 'Deliver early MVP features and stabilize core workflows',
+        goal: 'Deliver MVP features based on user testing',
         isActive: true,
       });
+      console.log('[seed] Created active Sprint 14.');
     }
 
-    const createIssue = async ({ key, title, status, priority, assignee, type, points, sprintId, reporter, description }) => {
-      const existing = await Issue.findOne({ issueKey: key });
-      if (existing) return existing;
-      return Issue.create({
-        issueKey: key,
-        title,
-        description,
-        status,
-        priority,
-        type,
-        storyPoints: points,
-        assigneeUserId: assignee?._id ?? null,
-        reporterUserId: reporter?._id ?? pm._id,
-        sprintId,
-      });
+    // Helpers
+    const randMember = () => members[Math.floor(Math.random() * members.length)];
+    const now = new Date();
+    const day = (offset) => {
+      const d = new Date(now);
+      d.setDate(d.getDate() + offset);
+      d.setHours(0, 0, 0, 0);
+      return d;
     };
 
-    const issuesToEnsure = [
+    // 3. SEED MILESTONES
+    const milestones = await Milestone.insertMany([
+      { workspaceId: workspace._id, name: 'Core Architecture', expectedStartDate: day(-10), expectedEndDate: day(10) },
+      { workspaceId: workspace._id, name: 'API Integrations', expectedStartDate: day(-2), expectedEndDate: day(12) },
+      { workspaceId: workspace._id, name: 'Testing & QA', expectedStartDate: day(5), expectedEndDate: day(20) },
+    ]);
+    console.log('[seed] Seeded Milestones.');
+
+    // 4. SEED MEETINGS
+    await Meeting.insertMany([
       {
-        key: 'NEB-101',
-        title: 'Implement user authentication flow',
+        workspaceId: workspace._id,
+        title: 'Weekly Sync',
+        startTime: new Date(now.getTime() - 2 * 60 * 60 * 1000), // 2 hours ago
+        endTime: new Date(now.getTime() - 1 * 60 * 60 * 1000),
+        organizerId: pmUser._id,
+        attendees: members.map(m => m._id),
+      },
+      {
+        workspaceId: workspace._id,
+        title: 'Architecture Review',
+        startTime: new Date(now.getTime() + 24 * 60 * 60 * 1000), // tomorrow
+        endTime: new Date(now.getTime() + 25 * 60 * 60 * 1000),
+        organizerId: randMember()._id,
+        attendees: members.map(m => m._id),
+      },
+      {
+        workspaceId: workspace._id,
+        title: 'Client Demo prep',
+        startTime: day(3),
+        endTime: new Date(day(3).getTime() + 2 * 60 * 60 * 1000),
+        organizerId: pmUser._id,
+        attendees: members.slice(0, 2).map(m => m._id),
+      }
+    ]);
+    console.log('[seed] Seeded Meetings.');
+
+    const r = () => Math.floor(Math.random() * 900) + 100;
+    const issuesData = [
+      {
+        workspaceId: workspace._id,
+        sprintId: sprint._id,
+        issueKey: `NEB-${r()}`,
+        title: 'Setup GitHub Actions CI/CD',
         status: 'done',
         priority: 1,
-        assignee: alice,
-        type: 'story',
-        points: 8,
-        sprintId: sprint._id,
-        reporter: pm,
-        description: 'Implement signup/login flow including email verification and password reset.',
+        type: 'task',
+        storyPoints: 5,
+        dueDate: day(-1),
       },
       {
-        key: 'NEB-102',
-        title: 'Design dashboard KPI components',
+        workspaceId: workspace._id,
+        sprintId: sprint._id,
+        issueKey: `NEB-${r()}`,
+        title: 'Design database schema for chat module',
         status: 'in-progress',
         priority: 1,
-        assignee: bob,
-        type: 'task',
-        points: 5,
-        sprintId: sprint._id,
-        reporter: pm,
-        description: 'Create reusable KPI cards for key metrics like velocity, open issues, and PRs.',
+        type: 'story',
+        storyPoints: 8,
+        dueDate: day(2),
       },
       {
-        key: 'NEB-103',
-        title: 'Fix responsive sidebar collapse',
-        status: 'in-progress',
-        priority: 2,
-        assignee: carol,
-        type: 'bug',
-        points: 3,
+        workspaceId: workspace._id,
         sprintId: sprint._id,
-        reporter: pm,
-        description: 'Fix layout issues where the sidebar overlaps content on smaller screens.',
-      },
-      {
-        key: 'NEB-104',
-        title: 'Add real-time notifications',
+        issueKey: `NEB-${r()}`,
+        title: 'Fix responsive layout on PM dashboard',
         status: 'todo',
         priority: 2,
-        assignee: bob,
-        type: 'story',
-        points: 13,
-        sprintId: sprint._id,
-        reporter: pm,
-        description: 'Add a notification center for mentions, assignments, and sprint updates.',
-      },
-      {
-        key: 'NEB-105',
-        title: 'Performance optimization audit',
-        status: 'backlog',
-        priority: 3,
-        assignee: alice,
-        type: 'task',
-        points: 8,
-        sprintId: null,
-        reporter: pm,
-        description: 'Audit front-end performance and recommend improvements for faster load times.',
-      },
-      {
-        key: 'NEB-106',
-        title: 'Write API documentation',
-        status: 'backlog',
-        priority: 3,
-        assignee: alice,
-        type: 'task',
-        points: 5,
-        sprintId: null,
-        reporter: pm,
-        description: 'Document public API endpoints and request/response models for external developers.',
-      },
-      {
-        key: 'NEB-107',
-        title: 'Implement drag-and-drop kanban',
-        status: 'review',
-        priority: 1,
-        assignee: bob,
-        type: 'story',
-        points: 8,
-        sprintId: sprint._id,
-        reporter: pm,
-        description: 'Add drag and drop support to the kanban board with persistence in the backend.',
-      },
-      {
-        key: 'NEB-108',
-        title: 'Fix dark mode color contrast',
-        status: 'done',
-        priority: 2,
-        assignee: carol,
         type: 'bug',
-        points: 2,
-        sprintId: null,
-        reporter: pm,
-        description: 'Improve accessibility by correcting contrast issues in dark theme.',
+        storyPoints: 3,
+        dueDate: day(4),
       },
       {
-        key: 'NEB-109',
-        title: 'Set up CI/CD pipeline',
-        status: 'done',
-        priority: 1,
-        assignee: bob,
-        type: 'task',
-        points: 5,
-        sprintId: null,
-        reporter: pm,
-        description: 'Configure GitHub Actions for CI and automated deployments to staging.',
-      },
-      {
-        key: 'NEB-110',
-        title: 'Create onboarding tutorial',
-        status: 'review',
-        priority: 2,
-        assignee: alice,
-        type: 'story',
-        points: 8,
+        workspaceId: workspace._id,
         sprintId: sprint._id,
-        reporter: pm,
-        description: 'Build an in-app interactive onboarding tutorial for new users.',
+        issueKey: `NEB-${r()}`,
+        title: 'Implement Calendar View replacing Gantt',
+        status: 'review',
+        priority: 1,
+        type: 'story',
+        storyPoints: 13,
+        dueDate: day(1),
+        githubPrUrl: 'https://github.com/Nebula/Flow/pull/42'
+      },
+      {
+        workspaceId: workspace._id,
+        sprintId: null, // Backlog
+        issueKey: `NEB-${r()}`,
+        title: 'Write API Documentation',
+        status: 'backlog',
+        priority: 3,
+        type: 'task',
+        storyPoints: 5,
+        dueDate: day(15),
       },
     ];
 
-    for (const issue of issuesToEnsure) {
-      await createIssue(issue);
+    for (const data of issuesData) {
+      await Issue.create({
+        ...data,
+        assigneeUserId: randMember()._id,
+        reporterUserId: pmUser._id,
+      });
     }
+    console.log('[seed] Seeded Issues.');
+    console.log('✅ Seed complete. Prototype ready.');
 
-    console.log('[seed] Default users and issues ensured.');
   } catch (err) {
     console.error('[seed] Failed to seed default data', err);
   }

@@ -3,9 +3,12 @@ const axios = require('axios');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const UserIdentity = require('../models/UserIdentity');
+const Workspace = require('../models/Workspace');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:8080';
 const JWT_SECRET = process.env.JWT_SECRET || 'nebula-flow-dev-secret';
+const INVITE_TOKEN_SECRET = process.env.INVITE_TOKEN_SECRET || 'nebula-invite-token-secret';
+const INVITE_TOKEN_EXPIRY = '7d';
 
 async function resolveUser(req) {
     let userId = null;
@@ -22,22 +25,111 @@ async function resolveUser(req) {
 }
 
 /**
+ * Generate invite token encoding workspace context
+ */
+function generateInviteToken(workspaceId, inviteeEmail, role) {
+    return jwt.sign(
+        {
+            workspaceId,
+            inviteeEmail,
+            role,
+        },
+        INVITE_TOKEN_SECRET,
+        { expiresIn: INVITE_TOKEN_EXPIRY }
+    );
+}
+
+/**
+ * Verify invite token
+ */
+function verifyInviteToken(token) {
+    try {
+        return jwt.verify(token, INVITE_TOKEN_SECRET);
+    } catch (err) {
+        return null;
+    }
+}
+
+async function inviteGitHubCollaborator(repoOwner, repoName, collaborator, token) {
+    if (!repoOwner || !repoName || !collaborator || !token) return { ok: false, message: 'Missing data for GitHub invite' };
+    try {
+        const res = await axios.put(
+            `https://api.github.com/repos/${repoOwner}/${repoName}/collaborators/${encodeURIComponent(collaborator)}`,
+            { permission: 'push' },
+            {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    Accept: 'application/vnd.github+json',
+                },
+            }
+        );
+        return { ok: res.status === 201 || res.status === 204, status: res.status };
+    } catch (err) {
+        const msg = err.response?.data?.message || err.message;
+        console.warn('[inviteGitHubCollaborator] failed:', collaborator, msg);
+        return { ok: false, message: msg };
+    }
+}
+
+async function getWorkspaceGitHubToken(workspace, currentUser) {
+    if (currentUser) {
+        const identity = await UserIdentity.findOne({ userId: currentUser._id, provider: 'github' });
+        if (identity?.accessTokenEncrypted) return identity.accessTokenEncrypted;
+    }
+
+    for (const member of workspace.members) {
+        const identity = await UserIdentity.findOne({ userId: member.userId._id || member.userId, provider: 'github' });
+        if (identity?.accessTokenEncrypted) return identity.accessTokenEncrypted;
+    }
+
+    return null;
+}
+
+/**
  * POST /api/github/invite
  *
  * Sends a branded invite email via Gmail SMTP (credentials in .env).
  * The From display name and Reply-To always show whoever is logged in,
  * so the recipient sees it as a personal invite.
+ * 
+ * Accepts workspaceId via query/body, or looks up workspace by sender + repoName.
  */
 exports.sendInvite = async (req, res) => {
-    const { email, githubUsername, role, repoOwner, repoName } = req.body;
+    const { email, githubUsername, role, repoOwner, repoName, workspaceId } = req.body;
     if (!email) return res.status(400).json({ error: 'Email is required' });
 
-    const results = { emailSent: false, githubInvited: false, errors: [] };
+    const results = { emailSent: false, githubInvited: false, errors: [], inviteToken: null };
 
     // Resolve logged-in user for From display name and Reply-To
     const sender = await resolveUser(req);
+    if (!sender) return res.status(401).json({ error: 'Not authenticated' });
+
     const senderName = sender?.fullName || sender?.email || 'Nebula Flow';
     const senderEmail = sender?.email;
+
+    // Find workspace
+    let workspace = null;
+    if (workspaceId) {
+        workspace = await Workspace.findById(workspaceId);
+    } else if (repoName) {
+        // Find workspace by sender + repoName
+        workspace = await Workspace.findOne({
+            'members.userId': sender._id,
+            'githubConfig.repoName': repoName,
+        });
+    }
+
+    if (!workspace) {
+        return res.status(404).json({ error: 'Workspace not found' });
+    }
+
+    // Normalize role for workspace enums (pm/collaborator)
+    const normalizedRole = (role && String(role).toLowerCase() === 'pm') ? 'pm' : 'collaborator';
+
+    // Generate invite token
+    const inviteToken = generateInviteToken(workspace._id.toString(), email, normalizedRole);
+    const acceptLink = `${FRONTEND_URL}/accept-invite?token=${inviteToken}`;
+    results.inviteToken = inviteToken;
 
     const smtpUser = process.env.EMAIL_USER;
     const smtpPass = process.env.EMAIL_PASS;
@@ -53,7 +145,6 @@ exports.sendInvite = async (req, res) => {
                 auth: { user: smtpUser, pass: smtpPass },
             });
 
-            const signupLink = `${FRONTEND_URL}/signup`;
             const repoSection = repoOwner && repoName
                 ? `<p style="margin:0 0 16px">You've also been invited as a collaborator on <strong>${repoOwner}/${repoName}</strong>.</p>`
                 : '';
@@ -82,9 +173,9 @@ exports.sendInvite = async (req, res) => {
         <strong style="color:#00d8ff">${role || 'Collaborator'}</strong>.
       </p>
       ${repoSection}
-      <p style="margin:16px 0 24px;">Click below to create your account and get started.</p>
+      <p style="margin:16px 0 24px;">Click below to accept the invitation and get started.</p>
       <div style="text-align:center;">
-        <a href="${signupLink}" style="display:inline-block;background:linear-gradient(135deg,#00d8ff,#8b5cf6);color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">
+        <a href="${acceptLink}" style="display:inline-block;background:linear-gradient(135deg,#00d8ff,#8b5cf6);color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">
           Accept Invitation
         </a>
       </div>
@@ -104,7 +195,19 @@ exports.sendInvite = async (req, res) => {
     }
 
     // ---- 2. Add GitHub collaborator ----
-    if (githubUsername && githubUsername.trim()) {
+    let resolvedGithubUsername = githubUsername?.trim();
+    if (!resolvedGithubUsername) {
+        // If we can find invitee's GitHub identity, use it
+        const inviteeUser = await User.findOne({ email: email.toLowerCase().trim() });
+        if (inviteeUser) {
+            const identity = await UserIdentity.findOne({ userId: inviteeUser._id, provider: 'github' });
+            if (identity?.username) {
+                resolvedGithubUsername = identity.username;
+            }
+        }
+    }
+
+    if (resolvedGithubUsername) {
         try {
             const userId = sender?._id || req.session?.userId;
             if (!userId) {
@@ -115,17 +218,17 @@ exports.sendInvite = async (req, res) => {
                     const identity = await UserIdentity.findOne({ userId, provider: 'github' });
                     token = identity?.accessTokenEncrypted;
                 }
+
                 if (!token) {
                     results.errors.push('GitHub token not found. Reconnect GitHub.');
                 } else if (!repoOwner || !repoName) {
                     results.errors.push('Repository info missing for GitHub invite.');
                 } else {
-                    const ghRes = await axios.put(
-                        `https://api.github.com/repos/${repoOwner}/${repoName}/collaborators/${githubUsername.trim()}`,
-                        { permission: 'push' },
-                        { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' } }
-                    );
-                    results.githubInvited = ghRes.status === 201 || ghRes.status === 204;
+                    const ghResult = await inviteGitHubCollaborator(repoOwner, repoName, resolvedGithubUsername, token);
+                    results.githubInvited = ghResult.ok;
+                    if (!ghResult.ok) {
+                        results.errors.push(`GitHub invite failed: ${ghResult.message || 'unknown'}`);
+                    }
                 }
             }
         } catch (err) {
@@ -136,4 +239,134 @@ exports.sendInvite = async (req, res) => {
     }
 
     return res.json(results);
+};
+
+/**
+ * GET /api/auth/accept-invite?token=...
+ *
+ * Accepts an invite and auto-adds existing users to workspace,
+ * or redirects new users to signup with invite token.
+ */
+exports.acceptInvite = async (req, res) => {
+    const { token } = req.query;
+
+    console.log('[acceptInvite] token:', token);
+
+    if (!token) {
+        console.error('[acceptInvite] missing token');
+        return res.status(400).json({ error: 'Invite token is required' });
+    }
+
+    // Verify token
+    const payload = verifyInviteToken(token);
+    if (!payload) {
+        console.error('[acceptInvite] invalid/expired token');
+        return res.status(400).json({ error: 'Invalid or expired invite token' });
+    }
+
+    const { workspaceId, inviteeEmail, role } = payload;
+    const normalizedInviteeEmail = String(inviteeEmail || '').trim().toLowerCase();
+    console.log('[acceptInvite] payload:', { workspaceId, inviteeEmail: normalizedInviteeEmail, role });
+
+    try {
+        // Find workspace
+        const workspace = await Workspace.findById(workspaceId).populate('members.userId');
+        if (!workspace) {
+            console.error('[acceptInvite] workspace not found', workspaceId);
+            return res.status(404).json({ error: 'Workspace not found' });
+        }
+
+        // Check if user with this email exists (case-insensitive)
+        let existingUser = await User.findOne({ email: normalizedInviteeEmail });
+        if (!existingUser) {
+            existingUser = await User.findOne({ email: new RegExp(`^${normalizedInviteeEmail}$`, 'i') });
+        }
+
+        if (!existingUser) {
+            // User doesn't exist - redirect to signup with token
+            return res.json({
+                action: 'redirect_to_signup',
+                message: 'Please create an account to accept this invitation',
+                token,
+                inviteeEmail: normalizedInviteeEmail,
+                role,
+            });
+        }
+
+        // User exists - check if already a member
+        const isAlreadyMember = workspace.members.some(
+            m => m.userId._id?.toString() === existingUser._id.toString()
+        );
+
+        if (isAlreadyMember) {
+            return res.json({
+                action: 'already_member',
+                message: 'You are already a member of this workspace',
+                workspaceId,
+            });
+        }
+
+        // Add user to workspace
+        const normalizedRole = (role && String(role).toLowerCase() === 'pm') ? 'pm' : 'collaborator';
+        workspace.members.push({
+            userId: existingUser._id,
+            role: normalizedRole,
+            joinedAt: new Date(),
+        });
+
+        await workspace.save();
+
+        let githubInviteStatus = null;
+        if (workspace.githubConfig?.repoOwner && workspace.githubConfig?.repoName) {
+            const targetIdentity = await UserIdentity.findOne({ userId: existingUser._id, provider: 'github' });
+            const targetGithubUsername = targetIdentity?.username;
+            if (targetGithubUsername) {
+                const adminToken = await getWorkspaceGitHubToken(workspace, await resolveUser(req));
+                if (adminToken) {
+                    const ghResult = await inviteGitHubCollaborator(
+                        workspace.githubConfig.repoOwner,
+                        workspace.githubConfig.repoName,
+                        targetGithubUsername,
+                        adminToken
+                    );
+                    githubInviteStatus = ghResult;
+                }
+            }
+        }
+
+        // If user is authenticated in session, redirect to dashboard
+        const currentUser = await resolveUser(req);
+        if (currentUser && currentUser._id.toString() === existingUser._id.toString()) {
+            return res.json({
+                action: 'added_to_workspace_authenticated',
+                message: 'Successfully added to workspace!',
+                workspaceId,
+                role,
+                redirectUrl: role === 'pm' ? '/pm/dashboard' : '/collaborator/dashboard',
+                githubInviteStatus,
+            });
+        }
+
+        // Otherwise, redirect to login
+        return res.json({
+            action: 'added_to_workspace_login',
+            message: 'Invite accepted! Please log in to access your workspace',
+            workspaceId,
+            role,
+            workspace: {
+                _id: workspace._id,
+                name: workspace.name,
+                members: workspace.members.map(m => ({
+                    _id: m.userId._id,
+                    fullName: m.userId.fullName,
+                    email: m.userId.email,
+                    avatarUrl: m.userId.avatarUrl,
+                    role: m.role,
+                })),
+            },
+        });
+    } catch (err) {
+        console.error('[acceptInvite] Error:', err.message);
+        return res.status(500).json({ error: 'Failed to accept invite' });
+    }
 };

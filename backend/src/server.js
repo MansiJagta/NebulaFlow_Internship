@@ -71,7 +71,10 @@ const { connectDB } = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
 const githubRoutes = require('./routes/githubRoutes');
 const pmRoutes = require('./routes/pmRoutes');
-const chatRoutes = require('./routes/chatRoutes'); // ✅ ADD THIS
+const chatRoutes = require('./routes/chatRoutes');
+const milestoneRoutes = require('./routes/milestoneRoutes');
+const meetingRoutes = require('./routes/meetingRoutes');
+const workspaceRoutes = require('./routes/workspaceRoutes');
 
 const chatSocket = require('./sockets/chatSocket'); // ✅ ADD THIS
 
@@ -119,10 +122,16 @@ app.use(
 app.use('/api/auth', authRoutes);
 app.use('/api/github', githubRoutes);
 app.use('/api/pm', pmRoutes);
-app.use('/api/chat', chatRoutes); // ✅ ADD THIS
+app.use('/api/chat', chatRoutes);
+app.use('/api/milestones', milestoneRoutes);
+app.use('/api/meetings', meetingRoutes);
+app.use('/api/workspace', workspaceRoutes);
 
 console.log('✅ PM routes mounted at /api/pm');
 console.log('✅ Chat routes mounted at /api/chat');
+console.log('✅ Milestone routes mounted at /api/milestones');
+console.log('✅ Meeting routes mounted at /api/meetings');
+console.log('✅ Workspace routes mounted at /api/workspace');
 
 // Test route
 app.get('/test', (req, res) => {

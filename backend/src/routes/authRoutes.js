@@ -11,6 +11,7 @@ const {
   getGitHubRepos,
   getGitHubStatus,
 } = require('../controllers/authController');
+const { acceptInvite } = require('../controllers/inviteController');
 
 const router = express.Router();
 
@@ -19,6 +20,9 @@ router.post('/register', registerWithEmail);
 router.post('/login-email', loginWithEmailPassword);
 router.get('/me', getCurrentUser);
 router.post('/logout', logout);
+
+// Invite acceptance
+router.get('/accept-invite', acceptInvite);
 
 // Google OAuth for login / signup
 router.get('/google', startGoogleOAuth);

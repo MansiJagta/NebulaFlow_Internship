@@ -54,12 +54,15 @@ const RepositorySelection = () => {
             const res = await axios.get(`${BACKEND_URL}/api/auth/github/repos`, {
                 withCredentials: true,
             });
+            // If the request succeeds, the token is valid, so they ARE connected.
+            setIsConnected(true);
             setRepos(res.data);
-            if (res.data.length > 0) setIsConnected(true);
         } catch (err) {
             console.error("Error fetching GitHub repos:", err);
+            setIsConnected(false);
         }
         setIsLoadingRepos(false);
+        setIsConnecting(false); // Reset connecting state if they come back disconnected
     };
 
     useEffect(() => {
@@ -71,26 +74,48 @@ const RepositorySelection = () => {
         (repo.description || "").toLowerCase().includes(searchQuery.toLowerCase())
     );
 
-    const handleLinkWorkspace = (repo) => {
+    const handleLinkWorkspace = async (repo) => {
         setSyncing(prev => ({ ...prev, [repo.id]: true }));
 
-        // Save the full repo object so GitHub page & Members page can use it
-        setRepo({
-            id: repo.id,
-            name: repo.name,
-            full_name: repo.fullName || `${repo.owner || ''}/${repo.name}`,
-            description: repo.description,
-            language: repo.language,
-            stars: repo.stars,
-            forks: repo.forks,
-            owner: repo.owner || (repo.fullName || '').split('/')[0],
-            private: repo.isPrivate ?? repo.private ?? false,
-        });
+        try {
+            // Create workspace with GitHub config
+            const workspaceRes = await axios.post(
+                `${BACKEND_URL}/api/workspace`,
+                {
+                    name: `${repo.name}-workspace`,
+                    description: repo.description || `Workspace for ${repo.name}`,
+                    githubConfig: {
+                        repoOwner: repo.owner,
+                        repoName: repo.name,
+                        repoId: repo.id,
+                    },
+                },
+                { withCredentials: true }
+            );
 
-        setTimeout(() => {
+            // Save the full repo object so GitHub page & Members page can use it
+            setRepo({
+                id: repo.id,
+                name: repo.name,
+                full_name: repo.fullName || `${repo.owner || ''}/${repo.name}`,
+                description: repo.description,
+                language: repo.language,
+                stars: repo.stars,
+                forks: repo.forks,
+                owner: repo.owner || (repo.fullName || '').split('/')[0],
+                private: repo.isPrivate ?? repo.private ?? false,
+                workspaceId: workspaceRes.data._id,
+            });
+
+            setTimeout(() => {
+                setSyncing(prev => ({ ...prev, [repo.id]: false }));
+                navigate(role === 'pm' ? "/pm/dashboard" : "/collaborator/dashboard");
+            }, 800);
+        } catch (err) {
+            console.error('Failed to create workspace:', err);
             setSyncing(prev => ({ ...prev, [repo.id]: false }));
-            navigate(role === 'pm' ? "/pm/dashboard" : "/collaborator/dashboard");
-        }, 800);
+            alert('Failed to create workspace. Please try again.');
+        }
     };
 
     const getLanguageColor = (lang) => {
@@ -202,6 +227,12 @@ const RepositorySelection = () => {
                             )}
                             {isConnecting ? "Connecting..." : "Connect to GitHub"}
                         </Button>
+                        <p className="text-sm text-white/40 mt-6">
+                            Trying to connect a different account? <br />
+                            <a href="https://github.com/logout" target="_blank" rel="noreferrer" className="text-nebula-cyan hover:underline inline-flex items-center gap-1 mt-1">
+                                Sign out of GitHub first
+                            </a>.
+                        </p>
                     </div>
                 ) : (
                     <div className="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -255,9 +286,14 @@ const RepositorySelection = () => {
                                 </GlassCard>
                             ))
                         ) : (
-                            <div className="col-span-full flex flex-col items-center justify-center py-20 text-center">
+                            <div className="col-span-full flex flex-col items-center justify-center py-24 text-center border-2 border-dashed border-white/10 rounded-2xl bg-white/5">
+                                <Github className="w-12 h-12 text-white/20 mb-4" />
                                 <h3 className="text-xl font-medium text-white mb-2">No Repositories Found</h3>
-                                <p className="text-white/50">We couldn't find any repositories matching "{searchQuery}"</p>
+                                <p className="text-white/50 max-w-md">
+                                    {repos.length === 0
+                                        ? "Your connected GitHub account doesn't seem to have any repositories. Create one on GitHub and then refresh this page."
+                                        : `We couldn't find any repositories matching "${searchQuery}".`}
+                                </p>
                             </div>
                         )}
                     </div>

@@ -23,6 +23,8 @@ const userSchema = new mongoose.Schema(
       type: String,
       select: false,
     },
+    // Role is now per-workspace (see Workspace.members)
+    // Kept for backward compat during migration
     role: {
       type: String,
       enum: ['pm', 'collaborator'],

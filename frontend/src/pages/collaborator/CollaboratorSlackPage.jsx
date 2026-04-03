@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { slackChannels, slackMessages, directMessages } from '@/data/slackMockData';
+import axios from 'axios';
+import { useAuth } from '@/contexts/AuthContext';
+import { slackChannels, directMessages } from '@/data/slackMockData';
 import { Hash, Send, Smile, Paperclip, AtSign, Video, FileText, Sparkles, Mic, Plus } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -12,6 +14,9 @@ const CollaboratorSlackPage = () => {
     const [activeChannel, setActiveChannel] = useState('general');
     const [activeTab, setActiveTab] = useState('chat');
     const [message, setMessage] = useState('');
+    const [meetings, setMeetings] = useState([]);
+    const [workspace, setWorkspace] = useState(null);
+    const { token } = useAuth();
 
     const filteredMessages = activeTab === 'mentions'
         ? slackMessages.filter(m => m.message.includes('@Alice'))
@@ -20,6 +25,23 @@ const CollaboratorSlackPage = () => {
     const currentChannel = slackChannels.find(c => c.id === activeChannel);
 
     const myChannels = slackChannels.slice(0, 3); // Mock "My Channels"
+
+    const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+
+    useEffect(() => {
+        const loadMeetings = async () => {
+            try {
+                const wsRes = await axios.get(`${process.env.VITE_API_URL || 'http://localhost:5000'}/api/workspace/me`, { headers: authHeaders, withCredentials: true });
+                const ws = wsRes.data;
+                setWorkspace(ws);
+                const meetingsRes = await axios.get(`${process.env.VITE_API_URL || 'http://localhost:5000'}/api/meetings${ws?._id ? `?workspaceId=${ws._id}` : ''}`, { headers: authHeaders, withCredentials: true });
+                setMeetings(meetingsRes.data || []);
+            } catch (err) {
+                console.error('[CollaboratorSlackPage] failed to load meetings', err);
+            }
+        };
+        loadMeetings();
+    }, [token]);
 
     return (
         <div className="flex h-[calc(100vh-140px)] rounded-xl overflow-hidden border border-border/40 bg-card shadow-2xl">

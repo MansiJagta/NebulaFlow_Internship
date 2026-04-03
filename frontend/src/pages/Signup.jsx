@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import axios from 'axios';
 import { useAuth } from '@/contexts/AuthContext';
 import ParticleBackground from '@/components/layout/ParticleBackground';
 import { Rocket, Mail, Lock, ArrowRight, Eye, EyeOff } from 'lucide-react';
@@ -18,6 +19,7 @@ const Signup = () => {
     const [error, setError] = useState('');
     const { register } = useAuth();
     const navigate = useNavigate();
+    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -31,7 +33,37 @@ const Signup = () => {
         try {
             setLoading(true);
             await register(email, password, fullName);
-            navigate('/repository-selection');
+
+            // Check if there's an invite token from accept-invite flow
+            const inviteToken = localStorage.getItem('inviteToken');
+            if (inviteToken) {
+                try {
+                    // Accept the invite with the newly created user
+                    const res = await axios.get(
+                        `${API_BASE_URL}/api/auth/accept-invite?token=${inviteToken}`,
+                        { withCredentials: true }
+                    );
+
+                    const { action, redirectUrl } = res.data;
+
+                    // Clean up localStorage
+                    localStorage.removeItem('inviteToken');
+                    localStorage.removeItem('inviteeEmail');
+                    localStorage.removeItem('inviteRole');
+
+                    // Redirect to appropriate dashboard
+                    if (action === 'added_to_workspace_authenticated' && redirectUrl) {
+                        navigate(redirectUrl);
+                    } else {
+                        navigate('/repository-selection');
+                    }
+                } catch (err) {
+                    console.error('Failed to process invite after signup:', err);
+                    navigate('/repository-selection');
+                }
+            } else {
+                navigate('/repository-selection');
+            }
         } catch (err) {
             setError(err.message || 'Something went wrong');
         } finally {

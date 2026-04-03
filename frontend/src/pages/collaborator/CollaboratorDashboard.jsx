@@ -1,4 +1,7 @@
 import { motion } from 'framer-motion';
+import { useEffect, useState } from 'react';
+import axios from 'axios';
+import { useAuth } from '@/contexts/AuthContext';
 import KpiCard from '@/components/common/KpiCard';
 import ActivityFeed from '@/components/common/ActivityFeed';
 import { ListChecks, Clock, GitBranch, Zap, Calendar, ArrowRight, Play } from 'lucide-react';
@@ -25,7 +28,28 @@ const schedule = [
     { time: '04:30 PM', title: 'Pair Programming w/ Bob', type: 'Code', duration: '1h' },
 ];
 
+const now = new Date();
+
 const CollaboratorDashboard = () => {
+    const { token } = useAuth();
+    const [meetings, setMeetings] = useState([]);
+
+    useEffect(() => {
+        const fetchMeetings = async () => {
+            try {
+                const res = await axios.get(`${process.env.VITE_API_URL || 'http://localhost:5000'}/api/meetings`, {
+                    headers: token ? { Authorization: `Bearer ${token}` } : {},
+                    withCredentials: true,
+                });
+                setMeetings(res.data || []);
+            } catch (err) {
+                console.error('[CollaboratorDashboard] fetchMeetings failed', err);
+            }
+        };
+
+        fetchMeetings();
+    }, [token]);
+
     return (
         <div className="space-y-6">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
@@ -119,22 +143,24 @@ const CollaboratorDashboard = () => {
                             <Badge variant="outline" className="text-[10px] border-primary/30 text-primary">Nov 14</Badge>
                         </div>
                         <div className="relative border-l-2 border-border/30 ml-2 space-y-6 pl-4 py-2">
-                            {schedule.map((s, i) => (
-                                <div key={i} className="relative">
+                            {(meetings.length > 0 ? meetings : schedule).map((s, i) => (
+                                <div key={s._id || i} className="relative">
                                     <span className={`absolute -left-[21px] top-1 w-3 h-3 rounded-full border-2 border-background ${i === 0 ? 'bg-green-500 animate-pulse' : 'bg-muted-foreground/30'}`}></span>
                                     <div className="flex flex-col">
-                                        <span className={`text-xs font-mono mb-0.5 ${i === 0 ? 'text-green-500 font-bold' : 'text-muted-foreground'}`}>{s.time}</span>
+                                        <span className={`text-xs font-mono mb-0.5 ${i === 0 ? 'text-green-500 font-bold' : 'text-muted-foreground'}`}>
+                                            {s.startTime ? new Date(s.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : s.time}
+                                        </span>
                                         <h4 className="text-sm font-medium text-foreground">{s.title}</h4>
                                         <div className="flex items-center gap-2 mt-1">
-                                            <Badge variant="secondary" className="text-[9px] py-0 px-1.5 h-4">{s.type}</Badge>
-                                            <span className="text-[10px] text-muted-foreground">{s.duration}</span>
+                                            <Badge variant="secondary" className="text-[9px] py-0 px-1.5 h-4">{s.type || 'Meeting'}</Badge>
+                                            <span className="text-[10px] text-muted-foreground">
+                                                {s.startTime && s.endTime ? `${new Date(s.startTime).toLocaleDateString()} • ${Math.round((new Date(s.endTime) - new Date(s.startTime)) / 60000)} min` : s.duration}
+                                            </span>
                                         </div>
                                     </div>
-                                    {i === 0 && (
-                                        <Button size="sm" className="w-full mt-3 h-7 text-xs" variant="gradient">
-                                            <Play className="w-3 h-3 mr-1.5" /> Join Meeting
-                                        </Button>
-                                    )}
+                                    <Button size="sm" className="w-full mt-3 h-7 text-xs" variant="gradient" onClick={() => window.alert(`Joining meeting: ${s.title}`)}>
+                                        <Play className="w-3 h-3 mr-1.5" /> Join Meeting
+                                    </Button>
                                 </div>
                             ))}
                         </div>

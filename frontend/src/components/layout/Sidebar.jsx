@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import {
     LayoutDashboard, ListChecks, MessageSquare, GitBranch,
-    BarChart3, UserPlus, LogOut, Rocket, ChevronLeft
+    BarChart3, UserPlus, LogOut, Rocket, ChevronLeft, ArrowLeft
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -25,10 +25,14 @@ const collabLinks = [
     { to: '/collaborator/group', label: 'Group', icon: LayoutDashboard },
 ];
 
-const Sidebar = () => {
+const Sidebar = ({ collapsed: propCollapsed, setCollapsed: propSetCollapsed }) => {
     const { role, logout, user } = useAuth();
     const navigate = useNavigate();
-    const [collapsed, setCollapsed] = useState(false);
+    const [localCollapsed, setLocalCollapsed] = useState(false);
+
+    const collapsed = propCollapsed !== undefined ? propCollapsed : localCollapsed;
+    const setCollapsed = propSetCollapsed !== undefined ? propSetCollapsed : setLocalCollapsed;
+
     const links = role === 'pm' ? pmLinks : collabLinks;
 
     const handleLogout = () => {
@@ -45,21 +49,35 @@ const Sidebar = () => {
         >
             {/* Logo */}
             <div className="p-4 flex items-center gap-2 border-b border-sidebar-border">
-                <Rocket className="w-6 h-6 text-primary flex-shrink-0" />
-                {!collapsed && (
-                    <motion.span
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        className="font-bold text-lg nebula-gradient-text"
-                    >
-                        Nebula Flow
-                    </motion.span>
-                )}
+                <button onClick={() => navigate('/')} className="flex items-center gap-2 focus:outline-none">
+                    <Rocket className="w-6 h-6 text-primary flex-shrink-0" />
+                    {!collapsed && (
+                        <motion.span
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            className="font-bold text-lg nebula-gradient-text"
+                        >
+                            Nebula Flow
+                        </motion.span>
+                    )}
+                </button>
                 <button
                     onClick={() => setCollapsed(!collapsed)}
                     className="ml-auto text-muted-foreground hover:text-foreground transition-colors"
                 >
                     <ChevronLeft className={`w-4 h-4 transition-transform ${collapsed ? 'rotate-180' : ''}`} />
+                </button>
+            </div>
+
+            {/* Back to Repo Selection */}
+            <div className="p-2 border-b border-sidebar-border">
+                <button
+                    onClick={() => navigate('/repository-selection')}
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all w-full text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-foreground"
+                    title="Back to Repository Selection"
+                >
+                    <ArrowLeft className="w-5 h-5 flex-shrink-0" />
+                    {!collapsed && <span>Back to Repos</span>}
                 </button>
             </div>
 

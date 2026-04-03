@@ -10,6 +10,7 @@ import AppLayout from "@/components/layout/AppLayout";
 import Landing from "@/pages/Landing";
 import Login from "@/pages/Login";
 import Signup from "@/pages/Signup";
+import AcceptInvite from "@/pages/AcceptInvite";
 import RepositorySelection from "@/pages/RepositorySelection";
 import NotFound from "@/pages/NotFound";
 
@@ -41,6 +42,7 @@ const App = () => (
                         <Route path="/" element={<Landing />} />
                         <Route path="/login" element={<Login />} />
                         <Route path="/signup" element={<Signup />} />
+                        <Route path="/accept-invite" element={<AcceptInvite />} />
                         <Route path="/repository-selection" element={<RepositorySelection />} />
 
                         {/* PM Routes */}

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { motion } from 'framer-motion';
 import { statusColumns, statusLabels, priorityColors, typeIcons, SPRINT_DURATION_DAYS } from '@/data/jiraMockData';
-import { List, LayoutGrid, Calendar as CalendarIcon, GanttChart as GanttIcon, Search, Plus, MoreHorizontal } from 'lucide-react';
+import { List, LayoutGrid, Calendar as CalendarIcon, Search, Plus, MoreHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -10,10 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
-import { DndContext, DragOverlay, closestCorners, KeyboardSensor, PointerSensor, useSensor, useSensors, defaultDropAnimationSideEffects } from '@dnd-kit/core';
+import { DndContext, DragOverlay, closestCorners, KeyboardSensor, PointerSensor, useDroppable, useSensor, useSensors, defaultDropAnimationSideEffects } from '@dnd-kit/core';
 import { sortableKeyboardCoordinates, useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GanttChart, DonutChart } from '@/components/common/Charts';
+import { DonutChart } from '@/components/common/Charts';
+import CalendarView from '@/components/common/CalendarView';
 import { useAuth } from '@/contexts/AuthContext';
 
 // --- DND Components ---
@@ -37,6 +38,7 @@ const JiraCard = ({ ticket, isOverlay }) => (
     <div className={`p-3 bg-card rounded-lg border border-border/40 shadow-sm hover:border-primary/40 cursor-grab active:cursor-grabbing group transition-all ${isOverlay ? 'shadow-xl rotate-2 scale-105 border-primary' : ''}`}>
         <div className="flex flex-col gap-2 mb-2">
             <div className="flex items-start justify-between gap-3">
+                <span className="text-[10px] font-bold text-muted-foreground " title="Sprint">{ticket.sprint || 'Backlog'}</span>
                 <p className="text-sm font-medium text-foreground leading-snug group-hover:text-primary transition-colors">{ticket.title}</p>
                 <Badge variant="outline" className="text-[10px] font-medium px-2 py-1">
                     {ticket.sprint || 'Backlog'}
@@ -82,6 +84,19 @@ const JiraCard = ({ ticket, isOverlay }) => (
     </div>
 );
 
+const DroppableColumn = ({ status, children }) => {
+    const { setNodeRef, isOver } = useDroppable({ id: status });
+
+    return (
+        <div
+            ref={setNodeRef}
+            className={`flex-shrink-0 w-72 bg-muted/10 rounded-xl p-2 border border-border/20 flex flex-col max-h-full transition ${isOver ? 'ring-2 ring-primary/40 bg-primary/10' : ''}`}
+        >
+            {children}
+        </div>
+    );
+};
+
 // --- Main Page Component ---
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -94,6 +109,13 @@ const JiraPage = () => {
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [users, setUsers] = useState([]);
     const [sprints, setSprints] = useState([]);
+    const [workspace, setWorkspace] = useState(null);
+
+    // Role-based filters
+    const [taskScope, setTaskScope] = useState('team'); // 'team' | 'my'
+    const [assigneeFilter, setAssigneeFilter] = useState('all');
+    const [priorityFilter, setPriorityFilter] = useState('all');
+    const [statusFilter, setStatusFilter] = useState('all');
 
     const [form, setForm] = useState({
         title: '',
@@ -113,9 +135,13 @@ const JiraPage = () => {
 
     const loadData = async () => {
         try {
+            const workspaceRes = await axios.get(`${API_BASE_URL}/api/workspace/me`, { headers: authHeaders, withCredentials: true });
+            const workspaceId = workspaceRes.data?._id;
+            setWorkspace(workspaceRes.data || null);
+
             const [usersRes, issuesRes, sprintsRes] = await Promise.all([
-                axios.get(`${API_BASE_URL}/api/pm/users`, { headers: authHeaders, withCredentials: true }),
-                axios.get(`${API_BASE_URL}/api/pm/issues`, { headers: authHeaders, withCredentials: true }),
+                axios.get(`${API_BASE_URL}/api/pm/users${workspaceId ? `?workspaceId=${workspaceId}` : ''}`, { headers: authHeaders, withCredentials: true }),
+                axios.get(`${API_BASE_URL}/api/pm/issues${workspaceId ? `?workspaceId=${workspaceId}` : ''}`, { headers: authHeaders, withCredentials: true }),
                 axios.get(`${API_BASE_URL}/api/pm/sprints`, { headers: authHeaders, withCredentials: true }),
             ]);
 
@@ -148,11 +174,30 @@ const JiraPage = () => {
         return sprints.find(s => s.isActive) || sprints[0] || null;
     }, [sprints]);
 
-    const filteredItems = items.filter(
-        t =>
-            t.title.toLowerCase().includes(search.toLowerCase()) ||
-            t.issueKey?.toLowerCase().includes(search.toLowerCase())
-    );
+    const { user: currentUser } = useAuth(); // getting the actual user from auth context
+
+    const filteredItems = items.filter(t => {
+        // Text search
+        const matchSearch = t.title.toLowerCase().includes(search.toLowerCase()) ||
+            t.issueKey?.toLowerCase().includes(search.toLowerCase());
+
+        // Scope filter - FIXED: properly distinguish 'my' vs 'team'
+        let matchScope = true;
+        if (taskScope === 'my') {
+            // Only show tasks assigned to current user
+            matchScope = t.assigneeUser && String(t.assigneeUser._id) === String(currentUser?.id);
+        } else if (taskScope === 'team') {
+            // Show all tasks for the team
+            matchScope = true;
+        }
+
+        // Extended filters
+        const matchAssignee = assigneeFilter === 'all' || (t.assigneeUser && String(t.assigneeUser._id) === assigneeFilter);
+        const matchPriority = priorityFilter === 'all' || t.priority === priorityFilter; // Note: priority is a Number (1,2,3) natively but could be string 'all'
+        const matchStatus = statusFilter === 'all' || t.status === statusFilter;
+
+        return matchSearch && matchScope && matchAssignee && matchPriority && matchStatus;
+    });
 
     const sensors = useSensors(
         useSensor(PointerSensor),
@@ -168,30 +213,42 @@ const JiraPage = () => {
         const activeId = active.id;
         const overId = over.id;
 
-        // Drop on column logic
-        if (statusColumns.includes(overId) || items.find(i => i.issueKey === overId)) {
-            let newStatus = overId;
-            // If dropped on an item, get that item's status
+        const ticket = items.find(t => t.issueKey === activeId);
+        if (!ticket) {
+            setActiveId(null);
+            return;
+        }
+
+        let newStatus = null;
+
+        if (statusColumns.includes(overId)) {
+            newStatus = overId;
+        } else {
             const overItem = items.find(i => i.issueKey === overId);
-            if (overItem) newStatus = overItem.status;
-
-            setItems(prev => prev.map(t =>
-                t.issueKey === activeId ? { ...t, status: newStatus } : t
-            ));
-
-            try {
-                const ticket = items.find(t => t.issueKey === activeId);
-                if (ticket) {
-                    await axios.patch(
-                        `${API_BASE_URL}/api/pm/issues/${ticket._id}`,
-                        { status: newStatus },
-                        { headers: authHeaders, withCredentials: true }
-                    );
-                }
-            } catch (err) {
-                console.error('[PMJiraPage] failed to update issue status', err);
+            if (overItem) {
+                newStatus = overItem.status;
             }
         }
+
+        if (!newStatus || newStatus === ticket.status) {
+            setActiveId(null);
+            return;
+        }
+
+        setItems(prev => prev.map(t =>
+            t.issueKey === activeId ? { ...t, status: newStatus } : t
+        ));
+
+        try {
+            await axios.patch(
+                `${API_BASE_URL}/api/pm/issues/${ticket._id}`,
+                { status: newStatus },
+                { headers: authHeaders, withCredentials: true }
+            );
+        } catch (err) {
+            console.error('[PMJiraPage] failed to update issue status', err);
+        }
+
         setActiveId(null);
     };
 
@@ -201,6 +258,7 @@ const JiraPage = () => {
                 title: form.title,
                 description: form.description,
                 assigneeUserId: form.assigneeUserId || null,
+                workspaceId: workspace?._id || null,
                 priority: form.priority,
                 type: form.type,
                 storyPoints: form.points,
@@ -436,8 +494,46 @@ const JiraPage = () => {
                     </div>
 
                     <div className="flex items-center gap-2">
-                        <Avatar className="w-7 h-7 mr-2"><AvatarFallback className="text-[10px] bg-primary/20 text-primary">ME</AvatarFallback></Avatar>
-                        <span className="text-sm text-muted-foreground border-r border-border/30 pr-4 mr-2">Only My Issues</span>
+                        {/* Task Scope Toggle */}
+                        <div className="flex items-center bg-muted/30 p-1 rounded-lg">
+                            <button
+                                onClick={() => setTaskScope('team')}
+                                className={`px-3 py-1 rounded text-xs font-semibold transition-all ${taskScope === 'team' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                            >
+                                Team Tasks
+                            </button>
+                            <button
+                                onClick={() => setTaskScope('my')}
+                                className={`px-3 py-1 rounded text-xs font-semibold transition-all ${taskScope === 'my' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                            >
+                                My Tasks
+                            </button>
+                        </div>
+
+                        {/* More Filters */}
+                        {taskScope === 'team' && (
+                            <div className="hidden lg:flex items-center gap-2 border-l border-border/30 pl-2 ml-2">
+                                <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
+                                    <SelectTrigger className="h-8 text-xs border-transparent shadow-none bg-muted/20 w-32">
+                                        <SelectValue placeholder="Assignee" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Assignees</SelectItem>
+                                        {collaborators.map(u => <SelectItem key={u._id} value={u._id}>{u.fullName}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+
+                                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                                    <SelectTrigger className="h-8 text-xs border-transparent shadow-none bg-muted/20 w-28">
+                                        <SelectValue placeholder="Status" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Status</SelectItem>
+                                        {statusColumns.map(col => <SelectItem key={col} value={col}>{statusLabels[col]}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        )}
 
                         <Button variant="outline" size="sm" className="h-8 border-transparent text-muted-foreground hover:text-foreground">Recently Updated</Button>
 
@@ -447,7 +543,6 @@ const JiraPage = () => {
                                 { id: 'board', icon: LayoutGrid },
                                 { id: 'list', icon: List },
                                 { id: 'calendar', icon: CalendarIcon },
-                                { id: 'timeline', icon: GanttIcon },
                             ].map(v => (
                                 <button
                                     key={v.id}
@@ -469,7 +564,7 @@ const JiraPage = () => {
                     <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
                         <div className="flex gap-4 h-full overflow-x-auto pb-4 items-start">
                             {statusColumns.map(status => (
-                                <div key={status} className="flex-shrink-0 w-72 bg-muted/10 rounded-xl p-2 border border-border/20 flex flex-col max-h-full">
+                                <DroppableColumn key={status} status={status}>
                                     <div className="flex items-center justify-between mb-3 px-2 py-1 sticky top-0 bg-transparent z-10">
                                         <h3 className="text-xs font-bold uppercase text-muted-foreground flex items-center gap-2">
                                             {statusLabels[status]}
@@ -485,7 +580,7 @@ const JiraPage = () => {
                                             ))}
                                         </SortableContext>
                                     </div>
-                                </div>
+                                </DroppableColumn>
                             ))}
                         </div>
                         <DragOverlay dropAnimation={dropAnimation}>
@@ -530,51 +625,13 @@ const JiraPage = () => {
                     </div>
                 )}
 
-                {view === 'timeline' && (
-                    <div className="h-full overflow-y-auto pr-2">
-                        <div className="mb-4">
-                            <h3 className="text-sm font-semibold mb-2">Roadmap</h3>
-                            <GanttChart />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <h4 className="text-xs font-semibold mb-2 text-muted-foreground">Sprint Progress</h4>
-                                <div className="nebula-card p-4">
-                                    <DonutChart />
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
                 {view === 'calendar' && (
-                    <div className="grid grid-cols-7 gap-px bg-border/30 rounded-lg overflow-hidden border border-border/30">
-                        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
-                            <div key={d} className="bg-card p-2 text-center text-xs font-semibold text-muted-foreground uppercase">{d}</div>
-                        ))}
-                        {Array.from({ length: 35 }).map((_, i) => {
-                            const day = i - 2; // Offset for mock calendar
-                            const dayTickets = filteredItems.filter((_, idx) => (idx * 3 + 1) % 31 === day); // Random distribution
-
-                            return (
-                                <div key={i} className={`bg-card min-h-[100px] p-2 ${day > 0 && day <= 31 ? '' : 'bg-muted/10'}`}>
-                                    {day > 0 && day <= 31 && (
-                                        <>
-                                            <span className={`text-xs ${day === 14 ? 'w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold' : 'text-muted-foreground'}`}>{day}</span>
-                                            <div className="space-y-1 mt-1">
-                                                {dayTickets.map(t => (
-                                                    <div key={t._id} className="text-[10px] bg-primary/10 text-primary px-1 py-0.5 rounded truncate border-l-2 border-primary cursor-pointer hover:bg-primary/20">
-                                                        {t.issueKey}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </>
-                                    )}
-                                </div>
-                            )
-                        })}
+                    <div className="h-full pr-2 pb-4">
+                        <CalendarView issues={filteredItems} />
                     </div>
                 )}
+
+
             </div>
         </div>
     );
