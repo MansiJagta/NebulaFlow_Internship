@@ -34,88 +34,84 @@ const PMAddMembers = () => {
     const [inviteResult, setInviteResult] = useState(null);
     const [invites, setInvites] = useState(FALLBACK_INVITES);
     const [members, setMembers] = useState([]);
+    const [workspaceMembers, setWorkspaceMembers] = useState([]);
+    const [githubCollaborators, setGithubCollaborators] = useState([]);
+    const [availableToAdd, setAvailableToAdd] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [workspace, setWorkspace] = useState(null);
     const [error, setError] = useState(null);
+    const [isAdding, setIsAdding] = useState({});
 
-    // Fetch real collaborators when a repo is selected
+    // Fetch workspace, members, and GitHub collaborators
     useEffect(() => {
-        if (!selectedRepo) {
-            setMembers(FALLBACK_MEMBERS);
-            return;
-        }
-
-        const fetchCollaborators = async () => {
+        const fetchData = async () => {
             setLoading(true);
             setError(null);
             try {
-                // If workspace exists, use workspace members as source of truth
-                let workspaceMembers = null;
-                try {
-                    const wsRes = await axios.get(`${API_BASE_URL}/api/workspace/me`, {
-                        withCredentials: true,
-                    });
-                    if (wsRes.data?.members) {
-                        workspaceMembers = wsRes.data.members.map((m) => ({
-                            id: m._id,
-                            name: m.fullName || m.email,
-                            login: m.email ? m.email.split('@')[0] : '',
-                            email: m.email,
-                            role: m.role || 'collaborator',
-                            avatarUrl: m.avatarUrl || '',
-                            lastActive: 'Workspace Member',
-                            profileUrl: '',
-                        }));
+                // Fetch workspace
+                const wsRes = await axios.get(`${API_BASE_URL}/api/workspace/me`, {
+                    withCredentials: true,
+                    headers: token ? { Authorization: `Bearer ${token}` } : {},
+                });
+                setWorkspace(wsRes.data);
+
+                const wsMembersData = wsRes.data?.members || [];
+                setWorkspaceMembers(wsMembersData);
+
+                // If workspace has GitHub config, fetch collaborators
+                if (wsRes.data?.githubConfig?.repoOwner && wsRes.data?.githubConfig?.repoName) {
+                    try {
+                        const headers = token ? { Authorization: `Bearer ${token}` } : {};
+                        const collabRes = await axios.get(
+                            `${API_BASE_URL}/api/github/repo/collaborators?owner=${encodeURIComponent(wsRes.data.githubConfig.repoOwner)}&repo=${encodeURIComponent(wsRes.data.githubConfig.repoName)}`,
+                            { headers, withCredentials: true }
+                        );
+
+                        const githubCollab = collabRes.data || [];
+                        setGithubCollaborators(githubCollab);
+
+                        // Find GitHub collaborators who are NOT in workspace
+                        const availableForAdd = githubCollab.filter(ghUser => {
+                            const inWorkspace = wsMembersData.some(wsMember => 
+                                wsMember.email?.toLowerCase() === `${ghUser.login}@github.com`.toLowerCase() ||
+                                wsMember.email?.toLowerCase() === ghUser.login.toLowerCase()
+                            );
+                            return !inWorkspace;
+                        });
+
+                        setAvailableToAdd(availableForAdd);
+                    } catch (err) {
+                        console.warn('[PMAddMembers] GitHub collaborators fetch failed', err);
+                        setGithubCollaborators([]);
+                        setAvailableToAdd([]);
                     }
-                } catch (workspaceErr) {
-                    console.warn('[PMAddMembers] workspace/me fetch failed', workspaceErr);
                 }
 
-                const owner = selectedRepo.owner
-                    || (selectedRepo.fullName?.includes('/')
-                        ? selectedRepo.fullName.split('/')[0]
-                        : null);
-                const repo = selectedRepo.name;
+                // Combine all members for display
+                const allMembers = wsMembersData.map(m => ({
+                    id: m._id,
+                    name: m.fullName || m.email,
+                    login: m.email?.split('@')[0] || '',
+                    email: m.email,
+                    role: m.role || 'collaborator',
+                    avatarUrl: m.avatarUrl || '',
+                    lastActive: 'Workspace Member',
+                    profileUrl: '',
+                    isInWorkspace: true,
+                }));
 
-                if (!owner) {
-                    setError('Could not determine repo owner.');
-                    setMembers(FALLBACK_MEMBERS);
-                    return;
-                }
-
-                const headers = token ? { Authorization: `Bearer ${token}` } : {};
-                const res = await axios.get(
-                    `${API_BASE_URL}/api/github/repo/collaborators?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}`,
-                    { headers, withCredentials: true }
-                );
-
-                const githubMembers = (res.data && res.data.length > 0) ? res.data.map((c, i) => ({
-                    id: String(c.login || i),
-                    name: c.name || c.login,
-                    login: c.login,
-                    email: `${c.login}@github.com`,
-                    role: c.role || 'Collaborator',
-                    avatarUrl: c.avatarUrl || '',
-                    lastActive: 'GitHub',
-                    profileUrl: c.profileUrl,
-                })) : FALLBACK_MEMBERS;
-
-                // Source-of-truth: workspace member roster if available
-                if (workspaceMembers && workspaceMembers.length > 0) {
-                    setMembers(workspaceMembers);
-                } else {
-                    setMembers(githubMembers);
-                }
+                setMembers(allMembers);
             } catch (err) {
-                console.error('[PMAddMembers] collaborators fetch error:', err);
-                setError('Could not load collaborators from GitHub. Showing demo data.');
+                console.error('[PMAddMembers] fetch data failed:', err);
+                setError('Could not load workspace. Showing demo data.');
                 setMembers(FALLBACK_MEMBERS);
             } finally {
                 setLoading(false);
             }
         };
 
-        fetchCollaborators();
-    }, [selectedRepo, API_BASE_URL]);
+        fetchData();
+    }, [API_BASE_URL, token]);
 
     const handleInvite = async () => {
         if (!email) return;
@@ -159,6 +155,50 @@ const PMAddMembers = () => {
 
     const handleRevokeInvite = (id) => {
         setInvites(prev => prev.filter(i => i.id !== id));
+    };
+
+    const handleAddMemberToWorkspace = async (githubUser) => {
+        if (!workspace) return;
+        
+        setIsAdding(prev => ({ ...prev, [githubUser.login]: true }));
+        try {
+            const headers = token ? { Authorization: `Bearer ${token}` } : {};
+            await axios.post(
+                `${API_BASE_URL}/api/workspace/${workspace._id}/add-member`,
+                { githubUsername: githubUser.login },
+                { headers, withCredentials: true }
+            );
+
+            // Add to workspace members
+            setWorkspaceMembers(prev => [...prev, {
+                _id: githubUser.login,
+                fullName: githubUser.name || githubUser.login,
+                email: `${githubUser.login}@github.com`,
+                avatarUrl: githubUser.avatarUrl,
+                role: 'collaborator',
+            }]);
+
+            // Remove from available to add
+            setAvailableToAdd(prev => prev.filter(u => u.login !== githubUser.login));
+
+            // Add to members for display
+            setMembers(prev => [...prev, {
+                id: githubUser.login,
+                name: githubUser.name || githubUser.login,
+                login: githubUser.login,
+                email: `${githubUser.login}@github.com`,
+                role: 'collaborator',
+                avatarUrl: githubUser.avatarUrl,
+                lastActive: 'Workspace Member',
+                profileUrl: githubUser.profileUrl,
+                isInWorkspace: true,
+            }]);
+        } catch (err) {
+            const msg = err.response?.data?.error || err.message;
+            setError(`Failed to add member: ${msg}`);
+        } finally {
+            setIsAdding(prev => ({ ...prev, [githubUser.login]: false }));
+        }
     };
 
     return (
@@ -289,6 +329,67 @@ const PMAddMembers = () => {
                     </div>
                 </div>
             </motion.div>
+
+            {/* Available to Add Section */}
+            {availableToAdd.length > 0 && (
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="nebula-card p-6 border-primary/20 bg-secondary/5">
+                    <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
+                        <div className="p-1.5 bg-secondary/20 rounded-md text-secondary"><Github className="w-4 h-4" /></div>
+                        GitHub Collaborators Ready to Add ({availableToAdd.length})
+                    </h3>
+                    <p className="text-xs text-muted-foreground mb-4">These GitHub collaborators already have website accounts. Click to add them to your workspace.</p>
+                    <div className="space-y-2">
+                        <AnimatePresence>
+                            {availableToAdd.map((ghUser) => (
+                                <motion.div
+                                    key={ghUser.login}
+                                    initial={{ opacity: 0, height: 0 }}
+                                    animate={{ opacity: 1, height: 'auto' }}
+                                    exit={{ opacity: 0, height: 0 }}
+                                    className="nebula-card p-3 flex items-center justify-between group hover:border-primary/30 transition-colors"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <Avatar className="w-10 h-10 border-2 border-background">
+                                            {ghUser.avatarUrl && <img src={ghUser.avatarUrl} alt={ghUser.login} />}
+                                            <AvatarFallback className="bg-gradient-to-br from-secondary/20 to-purple-500/20">
+                                                {ghUser.name?.[0]?.toUpperCase() || ghUser.login[0].toUpperCase()}
+                                            </AvatarFallback>
+                                        </Avatar>
+                                        <div>
+                                            <p className="text-sm font-medium text-foreground">{ghUser.name || ghUser.login}</p>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xs text-muted-foreground">{ghUser.role || 'Developer'}</span>
+                                                {ghUser.profileUrl && (
+                                                    <a 
+                                                        href={ghUser.profileUrl} 
+                                                        target="_blank" 
+                                                        rel="noopener noreferrer"
+                                                        className="text-primary hover:underline text-xs"
+                                                    >
+                                                        @{ghUser.login}
+                                                    </a>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <Button
+                                        onClick={() => handleAddMemberToWorkspace(ghUser)}
+                                        disabled={isAdding[ghUser.login]}
+                                        size="sm"
+                                        className="bg-secondary hover:bg-secondary/90"
+                                    >
+                                        {isAdding[ghUser.login] ? (
+                                            <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Adding…</>
+                                        ) : (
+                                            <><UserPlus className="w-4 h-4 mr-1" /> Add</>
+                                        )}
+                                    </Button>
+                                </motion.div>
+                            ))}
+                        </AnimatePresence>
+                    </div>
+                </motion.div>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Pending Invites */}
