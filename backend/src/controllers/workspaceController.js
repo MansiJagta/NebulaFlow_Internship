@@ -43,19 +43,26 @@ exports.createWorkspace = async (req, res) => {
 
     const userId = req.user._id;
 
-    // Check if user already has workspace with this name (per-user uniqueness)
-    const existing = await Workspace.findOne({
-      name,
+    // Check if user already has ANY workspace (they should only have one primary workspace)
+    let workspace = await Workspace.findOne({
       'members.userId': userId,
+      'members.role': 'pm'
     });
 
-    if (existing) {
-      // If workspace exists for this user, return it
-      const populated = await existing.populate('members.userId', 'fullName email avatarUrl role');
+    if (workspace) {
+      // Update existing workspace with new GitHub config and name/description
+      workspace.name = name;
+      workspace.description = description || workspace.description;
+      workspace.githubConfig = githubConfig;
+      await workspace.save();
+      
+      const populated = await workspace.populate('members.userId', 'fullName email avatarUrl role');
+      console.log(`[workspace] Updated existing workspace: ${workspace._id} with repo: ${githubConfig.repoName}`);
       return res.json(populated);
     }
 
-    const workspace = await Workspace.create({
+    // If no workspace exists, create a new one
+    workspace = await Workspace.create({
       name,
       description: description || '',
       githubConfig,
@@ -63,6 +70,7 @@ exports.createWorkspace = async (req, res) => {
     });
 
     const populated = await workspace.populate('members.userId', 'fullName email avatarUrl role');
+    console.log(`[workspace] Created new workspace: ${workspace._id} with repo: ${githubConfig.repoName}`);
     res.status(201).json(populated);
   } catch (err) {
     console.error('[workspace] createWorkspace failed', err);

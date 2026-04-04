@@ -136,8 +136,8 @@ exports.getRepoDetails = async (req, res) => {
 /**
  * GET /api/github/repo/collaborators?owner=<owner>&repo=<repo>
  *
- * Returns array of { login, avatarUrl, profileUrl, role: 'Collaborator' }
- * Falls back to the repo owner if no collaborator permissions.
+ * Returns array of { login, name, avatarUrl, profileUrl, role }
+ * Only returns actual collaborators (not contributors or owner).
  */
 exports.getRepoCollaborators = async (req, res) => {
     try {
@@ -154,28 +154,37 @@ exports.getRepoCollaborators = async (req, res) => {
         const headers = { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' };
         const base = `https://api.github.com/repos/${owner}/${repo}`;
 
-        // Try collaborators endpoint first (requires push access)
-        let collaborators = [];
-        try {
-            const collabRes = await axios.get(`${base}/collaborators?per_page=50`, { headers });
-            collaborators = collabRes.data.map(c => ({
-                login: c.login,
-                name: c.login,
-                avatarUrl: c.avatar_url,
-                profileUrl: c.html_url,
-                role: c.permissions?.admin ? 'Admin' : c.permissions?.push ? 'Developer' : 'Read-only',
-            }));
-        } catch {
-            // Fallback: use contributors as members
-            const contribRes = await axios.get(`${base}/contributors?per_page=20`, { headers });
-            collaborators = (contribRes.data || []).map(c => ({
-                login: c.login,
-                name: c.login,
-                avatarUrl: c.avatar_url,
-                profileUrl: c.html_url,
-                role: 'Contributor',
-            }));
-        }
+        // Get ONLY collaborators with explicit permission (not including repo owner or random contributors)
+        const collabRes = await axios.get(`${base}/collaborators?per_page=100&affiliation=direct`, { headers });
+        
+        // Fetch full user details to get real names
+        const collaborators = await Promise.all(
+            (collabRes.data || []).map(async (c) => {
+                try {
+                    // Fetch user details to get real name
+                    const userRes = await axios.get(`https://api.github.com/users/${c.login}`, { headers });
+                    const userData = userRes.data;
+                    
+                    return {
+                        login: c.login,
+                        name: userData.name || c.login,  // Use real name from profile, fallback to login
+                        avatarUrl: userData.avatar_url,
+                        profileUrl: userData.html_url,
+                        role: c.permissions?.admin ? 'Admin' : c.permissions?.push ? 'Developer' : 'Read-only',
+                    };
+                } catch (err) {
+                    console.warn(`[getRepoCollaborators] Could not fetch profile for ${c.login}:`, err.message);
+                    // Fallback if user fetch fails
+                    return {
+                        login: c.login,
+                        name: c.login,
+                        avatarUrl: c.avatar_url,
+                        profileUrl: c.html_url,
+                        role: c.permissions?.admin ? 'Admin' : c.permissions?.push ? 'Developer' : 'Read-only',
+                    };
+                }
+            })
+        );
 
         return res.json(collaborators);
     } catch (err) {

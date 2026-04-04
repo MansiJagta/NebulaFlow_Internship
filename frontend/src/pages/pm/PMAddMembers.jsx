@@ -48,7 +48,7 @@ const PMAddMembers = () => {
             setLoading(true);
             setError(null);
             try {
-                // Fetch workspace
+                // Fetch workspace (will get updated GitHub config if repo switched)
                 const wsRes = await axios.get(`${API_BASE_URL}/api/workspace/me`, {
                     withCredentials: true,
                     headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -111,7 +111,7 @@ const PMAddMembers = () => {
         };
 
         fetchData();
-    }, [API_BASE_URL, token]);
+    }, [API_BASE_URL, token, selectedRepo]);
 
     const handleInvite = async () => {
         if (!email) return;

@@ -95,12 +95,21 @@ async function seedDefaultData() {
     ]);
     console.log('[seed] Seeded Meetings.');
 
-    const r = () => Math.floor(Math.random() * 900) + 100;
+    // Get the next issue number from existing issues
+    const maxIssue = await Issue.findOne({}, {}, { sort: { 'issueKey': -1 } });
+    let nextIssueNum = 101;
+    if (maxIssue && maxIssue.issueKey) {
+      const match = maxIssue.issueKey.match(/NEB-(\d+)/);
+      if (match) {
+        nextIssueNum = parseInt(match[1]) + 1;
+      }
+    }
+
     const issuesData = [
       {
         workspaceId: workspace._id,
         sprintId: sprint._id,
-        issueKey: `NEB-${r()}`,
+        issueKey: `NEB-${nextIssueNum++}`,
         title: 'Setup GitHub Actions CI/CD',
         status: 'done',
         priority: 1,
@@ -111,7 +120,7 @@ async function seedDefaultData() {
       {
         workspaceId: workspace._id,
         sprintId: sprint._id,
-        issueKey: `NEB-${r()}`,
+        issueKey: `NEB-${nextIssueNum++}`,
         title: 'Design database schema for chat module',
         status: 'in-progress',
         priority: 1,
@@ -122,7 +131,7 @@ async function seedDefaultData() {
       {
         workspaceId: workspace._id,
         sprintId: sprint._id,
-        issueKey: `NEB-${r()}`,
+        issueKey: `NEB-${nextIssueNum++}`,
         title: 'Fix responsive layout on PM dashboard',
         status: 'todo',
         priority: 2,
@@ -133,7 +142,7 @@ async function seedDefaultData() {
       {
         workspaceId: workspace._id,
         sprintId: sprint._id,
-        issueKey: `NEB-${r()}`,
+        issueKey: `NEB-${nextIssueNum++}`,
         title: 'Implement Calendar View replacing Gantt',
         status: 'review',
         priority: 1,
@@ -145,7 +154,7 @@ async function seedDefaultData() {
       {
         workspaceId: workspace._id,
         sprintId: null, // Backlog
-        issueKey: `NEB-${r()}`,
+        issueKey: `NEB-${nextIssueNum++}`,
         title: 'Write API Documentation',
         status: 'backlog',
         priority: 3,
