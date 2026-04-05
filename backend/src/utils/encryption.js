@@ -63,7 +63,15 @@ exports.encrypt = (text) => {
 };
 
 exports.decrypt = (text) => {
+  if (!text || typeof text !== 'string' || !text.includes(':')) {
+    console.warn('[decrypt] Invalid encrypted text provided:', text);
+    return text || '';
+  }
+
   const [ivHex, encryptedHex] = text.split(":");
+  if (!ivHex || !encryptedHex) {
+    return text || '';
+  }
 
   const iv = Buffer.from(ivHex, "hex");
   const encryptedText = Buffer.from(encryptedHex, "hex");

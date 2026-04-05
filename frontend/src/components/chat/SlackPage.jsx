@@ -181,6 +181,20 @@ const SlackPage = () => {
         });
       });
     });
+ 
+    socket.on('message_deleted', (messageId) => {
+      const current = activeChannelRef.current;
+      if (current) {
+        setMessages((prev) => prev.filter(msg => msg._id !== messageId));
+      }
+    });
+
+    socket.on('message_updated', (updatedMsg) => {
+      const current = activeChannelRef.current;
+      if (current && updatedMsg.channelId === current.id) {
+        setMessages((prev) => prev.map(msg => msg._id === updatedMsg._id ? updatedMsg : msg));
+      }
+    });
 
     socket.on('typing_start', ({ userName, channelId }) => {
       if (activeChannelRef.current?.id === channelId) {
@@ -196,6 +210,8 @@ const SlackPage = () => {
 
     return () => {
       socket.off('receive_message');
+      socket.off('message_deleted');
+      socket.off('message_updated');
       socket.off('typing_start');
       socket.off('typing_stop');
       disconnectSocket();
@@ -311,11 +327,22 @@ const SlackPage = () => {
   }, [API_BASE_URL, activeChannel?.id, axiosConfig, inputMessage]);
 
   const uploadFile = useCallback(
-    async (file) => {
-      if (!activeChannel?.id || !file) return;
+    async (files, content = "") => {
+      if (!activeChannel?.id || (!files?.length && !content)) return;
 
       const formData = new FormData();
-      formData.append('file', file);
+      
+      // Append each file if present
+      if (files && files.length > 0) {
+        files.forEach(file => {
+          formData.append('file', file);
+        });
+      }
+
+      // Append text content if present
+      if (content) {
+        formData.append('content', content);
+      }
 
       try {
         const response = await axios.post(
@@ -325,7 +352,6 @@ const SlackPage = () => {
             ...axiosConfig,
             headers: {
               ...axiosConfig.headers,
-              'Content-Type': 'multipart/form-data',
             },
           }
         );
@@ -379,7 +405,14 @@ const SlackPage = () => {
       />
 
       <div className="flex-1 flex flex-col">
-        <ChatWindow activeChannel={activeChannel} messages={messages} typingText={typingText} />
+        <ChatWindow 
+          activeChannel={activeChannel} 
+          messages={messages} 
+          typingText={typingText}
+          setMessages={setMessages}
+          API_BASE_URL={API_BASE_URL}
+          token={token}
+        />
         <MessageInput
           inputMessage={inputMessage}
           setInputMessage={setInputMessage}

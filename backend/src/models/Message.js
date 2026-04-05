@@ -54,6 +54,40 @@ const messageSchema = new mongoose.Schema({
     default: null
   },
 
+  isAttachment: {
+    type: Boolean,
+    default: false
+  },
+
+  attachmentUrl: {
+    type: String, // 🔐 encrypted URL (for Cloudinary files)
+    default: null
+  },
+
+  attachmentType: {
+    type: String, // 'raw' for PDFs, 'image' for images, etc.
+    default: null
+  },
+
+  attachmentFilename: {
+    type: String,
+    default: null
+  },
+
+  attachments: [
+    {
+      url: { type: String },
+      publicId: { type: String }, // For Cloudinary deletion
+      type: { type: String },
+      filename: { type: String }
+    }
+  ],
+
+  isEdited: {
+    type: Boolean,
+    default: false
+  },
+
   createdAt: {
     type: Date,
     default: Date.now

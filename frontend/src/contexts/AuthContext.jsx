@@ -23,28 +23,40 @@ export const AuthProvider = ({ children }) => {
 
     const syncUser = useCallback((apiUser, nextToken) => {
         if (!apiUser) {
-            setUser(null);
-            localStorage.removeItem('nebula-user');
-            setToken(null);
-            localStorage.removeItem('nebula-token');
+            if (user !== null) {
+                setUser(null);
+                localStorage.removeItem('nebula-user');
+                setToken(null);
+                localStorage.removeItem('nebula-token');
+            }
             return;
         }
 
         const mapped = {
-            id: apiUser.id,
+            id: apiUser._id || apiUser.id,
             name: apiUser.fullName || apiUser.email?.split('@')[0] || '',
             email: apiUser.email,
             avatar: apiUser.avatarUrl || '',
             role: apiUser.role ?? null,
         };
 
-        setUser(mapped);
-        localStorage.setItem('nebula-user', JSON.stringify(mapped));
-        if (nextToken) {
+        // Deep comparison to prevent re-renders
+        const isSameUser = user && 
+            user.id === mapped.id && 
+            user.email === mapped.email && 
+            user.role === mapped.role &&
+            user.name === mapped.name;
+
+        if (!isSameUser) {
+            setUser(mapped);
+            localStorage.setItem('nebula-user', JSON.stringify(mapped));
+        }
+
+        if (nextToken && nextToken !== token) {
             setToken(nextToken);
             localStorage.setItem('nebula-token', nextToken);
         }
-    }, []);
+    }, [user, token]);
 
     /** Persist the selected GitHub repo so all pages can read it */
     const setRepo = useCallback((repo) => {
