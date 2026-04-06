@@ -22,10 +22,31 @@ router.use(requireAuth);
 // =======================================
 router.post("/channel/create", async (req, res) => {
   try {
-    const { name, isPrivate = false, members = [] } = req.body;
+    const { name, workspaceId, isPrivate = false, members = [] } = req.body;
+
+    if (!workspaceId) {
+      return res.status(400).json({ message: "workspaceId is required" });
+    }
+
+    // 1. Check if public channel already exists in this workspace
+    if (!isPrivate) {
+      const existing = await Channel.findOne({ name, workspaceId, isPrivate: false });
+      if (existing) return res.json(existing);
+    }
+
+    // 2. Check if DM/Private channel with exact same members and workspace exists
+    if (isPrivate && members.length > 0) {
+      const existing = await Channel.findOne({
+        workspaceId,
+        isPrivate: true,
+        members: { $all: members, $size: members.length }
+      });
+      if (existing) return res.json(existing);
+    }
 
     const channel = await Channel.create({
       name,
+      workspaceId,
       isPrivate,
       members
     });
@@ -34,7 +55,7 @@ router.post("/channel/create", async (req, res) => {
 
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Failed to create channel" });
+    res.status(500).json({ message: "Failed to handle channel creation" });
   }
 });
 
@@ -66,22 +87,36 @@ router.post("/send/:channelId", checkAccess, async (req, res) => {
   try {
     const encrypted = encrypt(req.body.content);
     
+    // Get workspaceId from channel
+    const channel = await Channel.findById(req.params.channelId);
+    if (!channel) return res.status(404).json({ message: "Channel not found" });
+
     const msg = await Message.create({
       channelId: req.params.channelId,
+      workspaceId: channel.workspaceId,
       sender: req.user.id,
       content: encrypted
     });
 
-    // Return decrypted message to frontend
     const messageWithSender = await msg.populate('sender', 'fullName email avatarUrl');
-    res.json({
+    
+    const responseData = {
       _id: messageWithSender._id,
-      channelId: messageWithSender.channelId,
+      channelId: messageWithSender.channelId.toString(),
+      workspaceId: messageWithSender.workspaceId.toString(),
       sender: messageWithSender.sender,
       content: req.body.content,
       isAttachment: false,
       createdAt: messageWithSender.createdAt
-    });
+    };
+
+    // Emit to socket room
+    const io = req.app.get('io');
+    if (io) {
+      io.to(req.params.channelId).emit('receive_message', responseData);
+    }
+
+    res.json(responseData);
   } catch (err) {
     res.status(500).json(err.message);
   }
@@ -124,8 +159,13 @@ router.post("/upload/:channelId", checkAccess, async (req, res) => {
 
     console.log('Final attachments for DB:', JSON.stringify(attachments, null, 2));
 
+    // Get workspaceId from channel
+    const channel = await Channel.findById(req.params.channelId);
+    if (!channel) return res.status(404).json({ message: "Channel not found" });
+
     const msg = await Message.create({
       channelId: req.params.channelId,
+      workspaceId: channel.workspaceId,
       sender: req.user.id,
       content: encryptedContent,
       attachments: attachments,
@@ -139,9 +179,10 @@ router.post("/upload/:channelId", checkAccess, async (req, res) => {
     // Return decrypted message to frontend
     const messageWithSender = await msg.populate('sender', 'fullName email avatarUrl');
     
-    res.json({
+    const responseData = {
       _id: messageWithSender._id,
-      channelId: messageWithSender.channelId,
+      channelId: messageWithSender.channelId.toString(),
+      workspaceId: messageWithSender.workspaceId?.toString(),
       sender: messageWithSender.sender,
       content: content,
       attachments: attachments.map(a => ({
@@ -151,7 +192,15 @@ router.post("/upload/:channelId", checkAccess, async (req, res) => {
       })),
       isAttachment: msg.isAttachment,
       createdAt: messageWithSender.createdAt
-    });
+    };
+
+    // Emit to socket room
+    const io = req.app.get('io');
+    if (io) {
+      io.to(req.params.channelId).emit('receive_message', responseData);
+    }
+
+    res.json(responseData);
 
   } catch (err) {
     console.error('Upload error:', err);

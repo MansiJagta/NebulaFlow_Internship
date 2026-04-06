@@ -30,7 +30,7 @@ const addMessageUnique = (prev, incoming) => {
 };
 
 const SlackPage = () => {
-  const { user, token, API_BASE_URL } = useAuth();
+  const { user, token, API_BASE_URL, selectedRepo } = useAuth();
 
   const [channels, setChannels] = useState([]);
   const [users, setUsers] = useState([]);
@@ -68,43 +68,41 @@ const SlackPage = () => {
   );
 
   const ensurePublicChannels = useCallback(async () => {
-    const storedMap = safeParse(localStorage.getItem(getPublicChannelMapKey()), {});
-    const nextMap = { ...storedMap };
+    try {
+      const created = await Promise.all(
+        PUBLIC_CHANNEL_NAMES.map(async (name) => {
+          const response = await axios.post(
+            `${API_BASE_URL}/api/chat/channel/create`,
+            {
+              name,
+              workspaceId: selectedRepo?.workspaceId,
+              isPrivate: false,
+              members: [],
+            },
+            axiosConfig
+          );
 
-    const created = await Promise.all(
-      PUBLIC_CHANNEL_NAMES.map(async (name) => {
-        if (nextMap[name]) {
-          return { id: nextMap[name], name, type: 'channel', unread: 0 };
-        }
-
-        const response = await axios.post(
-          `${API_BASE_URL}/api/chat/channel/create`,
-          {
+          const id = response?.data?._id;
+          return {
+            id,
             name,
-            isPrivate: false,
-            members: [],
-          },
-          axiosConfig
-        );
+            type: 'channel',
+            unread: 0,
+          };
+        })
+      );
 
-        const id = response?.data?._id;
-        nextMap[name] = id;
-
-        return {
-          id,
-          name,
-          type: 'channel',
-          unread: 0,
-        };
-      })
-    );
-
-    localStorage.setItem(getPublicChannelMapKey(), JSON.stringify(nextMap));
-    return created.filter((item) => item.id);
-  }, [API_BASE_URL, axiosConfig]);
+      return created.filter((item) => item.id);
+    } catch (err) {
+      console.error('Failed to ensure public channels', err);
+      return [];
+    }
+  }, [API_BASE_URL, axiosConfig, selectedRepo?.workspaceId]);
 
   const loadInitialData = useCallback(async () => {
-    if (!user?.id) return;
+    if (!user?.id || !selectedRepo?.workspaceId) {
+      return;
+    }
 
     try {
       const [channelData, usersRes] = await Promise.all([
@@ -133,11 +131,13 @@ const SlackPage = () => {
     } catch (error) {
       console.error('Failed to initialize Slack page', error);
     }
-  }, [API_BASE_URL, axiosConfig, ensurePublicChannels, user?.id]);
+  }, [API_BASE_URL, axiosConfig, ensurePublicChannels, user?.id, selectedRepo?.workspaceId]);
 
   useEffect(() => {
-    loadInitialData();
-  }, [loadInitialData]);
+    if (user?.id && selectedRepo?.workspaceId) {
+      loadInitialData();
+    }
+  }, [loadInitialData, user?.id, selectedRepo?.workspaceId]);
 
   useEffect(() => {
     const socket = initializeSocket(API_BASE_URL);
@@ -163,14 +163,12 @@ const SlackPage = () => {
       );
 
       setUsers((prev) => {
-        const dmMap = safeParse(localStorage.getItem(getDmMapKey(user?.id)), {});
         const senderId = getSenderId(payload.sender);
 
         return prev.map((dmUser) => {
-          const isTargetChannel = dmMap[dmUser.id] === payload.channelId;
           const isSender = senderId && dmUser.id === senderId;
 
-          if (!isTargetChannel && !isSender) {
+          if (!isSender) {
             return dmUser;
           }
 
@@ -265,26 +263,18 @@ const SlackPage = () => {
     async (targetUser) => {
       if (!user?.id) return;
 
-      const dmKey = getDmMapKey(user.id);
-      const dmMap = safeParse(localStorage.getItem(dmKey), {});
+      const response = await axios.post(
+        `${API_BASE_URL}/api/chat/channel/create`,
+        {
+          name: `dm`, // Backend will handle finding/naming consistently
+          workspaceId: selectedRepo?.workspaceId,
+          isPrivate: true,
+          members: [user.id, targetUser.id],
+        },
+        axiosConfig
+      );
 
-      let channelId = dmMap[targetUser.id];
-
-      if (!channelId) {
-        const response = await axios.post(
-          `${API_BASE_URL}/api/chat/channel/create`,
-          {
-            name: `dm-${user.id}-${targetUser.id}`,
-            isPrivate: true,
-            members: [user.id, targetUser.id],
-          },
-          axiosConfig
-        );
-
-        channelId = response?.data?._id;
-        dmMap[targetUser.id] = channelId;
-        localStorage.setItem(dmKey, JSON.stringify(dmMap));
-      }
+      const channelId = response?.data?._id;
 
       if (!channelId) return;
 
@@ -312,12 +302,6 @@ const SlackPage = () => {
 
       const savedMessage = response.data;
       setMessages((prev) => addMessageUnique(prev, savedMessage));
-
-      const socket = initializeSocket(API_BASE_URL);
-      socket.emit('send_message', {
-        ...savedMessage,
-        channelId: activeChannel.id,
-      });
 
       setInputMessage('');
       setTypingText('');
@@ -358,12 +342,6 @@ const SlackPage = () => {
 
         const savedMessage = response.data;
         setMessages((prev) => addMessageUnique(prev, savedMessage));
-
-        const socket = initializeSocket(API_BASE_URL);
-        socket.emit('send_message', {
-          ...savedMessage,
-          channelId: activeChannel.id,
-        });
       } catch (error) {
         console.error('File upload failed', error);
       }

@@ -70,6 +70,7 @@ export const AuthProvider = ({ children }) => {
             id: repo.id,
             name: repo.name,
             fullName: repo.full_name || repo.fullName || repo.name,
+            workspaceId: repo.workspaceId,
             description: repo.description || '',
             language: repo.language || null,
             stars: repo.stars ?? repo.stargazers_count ?? 0,

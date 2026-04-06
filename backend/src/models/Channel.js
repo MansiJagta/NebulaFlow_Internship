@@ -42,8 +42,14 @@ const mongoose = require("mongoose");
 
 const channelSchema = new mongoose.Schema({
   name: String,
+  workspaceId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Workspace',
+    required: true,
+    index: true
+  },
   isPrivate: { type: Boolean, default: false },
   members: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }]
-});
+}, { timestamps: true });
 
 module.exports = mongoose.model("Channel", channelSchema);
