@@ -39,7 +39,7 @@ const RepositorySelection = () => {
     const [syncing, setSyncing] = useState({});
     const [repos, setRepos] = useState([]);
 
-    const BACKEND_URL = "http://localhost:5000"; // your backend URL
+    const BACKEND_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:5000"; // your backend URL
 
     // Connect GitHub account (redirects to backend OAuth route)
     const handleConnectObj = () => {

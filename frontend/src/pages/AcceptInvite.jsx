@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 export default function AcceptInvite() {
   const navigate = useNavigate();
@@ -25,7 +25,7 @@ export default function AcceptInvite() {
     const acceptInvite = async () => {
       try {
         const res = await axios.get(
-          `${API_BASE_URL}/api/auth/accept-invite?token=${token}`,
+          `${API_BASE_URL}/auth/accept-invite?token=${token}`,
           { withCredentials: true }
         );
 

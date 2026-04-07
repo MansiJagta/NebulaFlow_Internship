@@ -18,7 +18,7 @@ const MiniKanban = () => {
     useEffect(() => {
         const load = async () => {
             try {
-                const res = await axios.get(`${API_BASE_URL}/api/pm/issues`, {
+                const res = await axios.get(`${API_BASE_URL}/pm/issues`, {
                     headers: authHeaders,
                     withCredentials: true,
                 });

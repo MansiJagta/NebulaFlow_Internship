@@ -56,7 +56,7 @@ const SlackPage = () => {
       if (!channelId) return;
 
       try {
-        const response = await axios.get(`${API_BASE_URL}/api/chat/${channelId}`, axiosConfig);
+        const response = await axios.get(`${API_BASE_URL}/chat/${channelId}`, axiosConfig);
         const nextMessages = Array.isArray(response.data) ? response.data : [];
         setMessages(nextMessages);
       } catch (error) {
@@ -72,7 +72,7 @@ const SlackPage = () => {
       const created = await Promise.all(
         PUBLIC_CHANNEL_NAMES.map(async (name) => {
           const response = await axios.post(
-            `${API_BASE_URL}/api/chat/channel/create`,
+            `${API_BASE_URL}/chat/channel/create`,
             {
               name,
               workspaceId: selectedRepo?.workspaceId,
@@ -107,7 +107,7 @@ const SlackPage = () => {
     try {
       const [channelData, usersRes] = await Promise.all([
         ensurePublicChannels(),
-        axios.get(`${API_BASE_URL}/api/pm/users`, axiosConfig),
+        axios.get(`${API_BASE_URL}/pm/users`, axiosConfig),
       ]);
 
       setChannels(channelData);
@@ -264,7 +264,7 @@ const SlackPage = () => {
       if (!user?.id) return;
 
       const response = await axios.post(
-        `${API_BASE_URL}/api/chat/channel/create`,
+        `${API_BASE_URL}/chat/channel/create`,
         {
           name: `dm`, // Backend will handle finding/naming consistently
           workspaceId: selectedRepo?.workspaceId,
@@ -295,7 +295,7 @@ const SlackPage = () => {
 
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/api/chat/send/${activeChannel.id}`,
+        `${API_BASE_URL}/chat/send/${activeChannel.id}`,
         { content },
         axiosConfig
       );
@@ -330,7 +330,7 @@ const SlackPage = () => {
 
       try {
         const response = await axios.post(
-          `${API_BASE_URL}/api/chat/upload/${activeChannel.id}`,
+          `${API_BASE_URL}/chat/upload/${activeChannel.id}`,
           formData,
           {
             ...axiosConfig,

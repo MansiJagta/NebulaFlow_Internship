@@ -29,8 +29,8 @@ const CalendarView = ({ issues }) => {
         const load = async () => {
             try {
                 const [meetRes, mileRes] = await Promise.all([
-                    axios.get(`${API_BASE_URL}/api/meetings`, { headers: authHeaders, withCredentials: true }),
-                    axios.get(`${API_BASE_URL}/api/milestones`, { headers: authHeaders, withCredentials: true })
+                    axios.get(`${API_BASE_URL}/meetings`, { headers: authHeaders, withCredentials: true }),
+                    axios.get(`${API_BASE_URL}/milestones`, { headers: authHeaders, withCredentials: true })
                 ]);
                 setMeetings(meetRes.data);
                 setMilestones(mileRes.data);

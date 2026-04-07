@@ -8,7 +8,7 @@ export const useAuth = () => {
     return ctx;
 };
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(() => {
@@ -83,7 +83,7 @@ export const AuthProvider = ({ children }) => {
     }, []);
 
     const login = useCallback(async (email, password) => {
-        const res = await fetch(`${API_BASE_URL}/api/auth/login-email`, {
+        const res = await fetch(`${API_BASE_URL}/auth/login-email`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
@@ -99,21 +99,21 @@ export const AuthProvider = ({ children }) => {
     }, [syncUser]);
 
     const register = useCallback(async (email, password, fullName) => {
-        const res = await fetch(`${API_BASE_URL}/api/auth/register`, {
+        const res = await fetch(`${API_BASE_URL}/auth/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
             body: JSON.stringify({ email, password, fullName }),
         });
-
+ 
         if (!res.ok) {
             throw new Error('Registration failed');
         }
-
+ 
         const data = await res.json();
         syncUser(data.user, data.token);
     }, [syncUser]);
-
+ 
     const selectRole = useCallback((role) => {
         setUser(prev => {
             if (!prev) return prev;
@@ -122,10 +122,10 @@ export const AuthProvider = ({ children }) => {
             return updated;
         });
     }, []);
-
+ 
     const logout = useCallback(async () => {
         try {
-            await fetch(`${API_BASE_URL}/api/auth/logout`, {
+            await fetch(`${API_BASE_URL}/auth/logout`, {
                 method: 'POST',
                 credentials: 'include',
             });
@@ -139,12 +139,12 @@ export const AuthProvider = ({ children }) => {
         setSelectedRepoState(null);
         localStorage.removeItem('nebula-selected-repo');
     }, []);
-
+ 
     useEffect(() => {
         const load = async () => {
             try {
                 const headers = token ? { Authorization: `Bearer ${token}` } : {};
-                const res = await fetch(`${API_BASE_URL}/api/auth/me`, {
+                const res = await fetch(`${API_BASE_URL}/auth/me`, {
                     credentials: 'include',
                     headers,
                 });

@@ -29,11 +29,11 @@ const PerformancePage = () => {
         const fetchAll = async () => {
             try {
                 // 1. Get Workspace
-                const wsRes = await axios.get(`${API_BASE_URL}/api/workspace/me`, { withCredentials: true });
+                const wsRes = await axios.get(`${API_BASE_URL}/workspace/me`, { withCredentials: true });
                 setWorkspace(wsRes.data);
 
                 // 2. Get Performance Data
-                const perfRes = await axios.get(`${API_BASE_URL}/api/performance/${wsRes.data._id}`, { withCredentials: true });
+                const perfRes = await axios.get(`${API_BASE_URL}/performance/${wsRes.data._id}`, { withCredentials: true });
                 setData(perfRes.data);
             } catch (err) {
                 console.error('[Performance] Fetch failed:', err);

@@ -56,7 +56,7 @@ const MilestoneGanttChart = ({ isPm = false }) => {
 
     const loadMilestones = async () => {
         try {
-            const res = await axios.get(`${API_BASE_URL}/api/milestones`, {
+            const res = await axios.get(`${API_BASE_URL}/milestones`, {
                 headers: authHeaders,
                 withCredentials: true,
             });
@@ -128,7 +128,7 @@ const MilestoneGanttChart = ({ isPm = false }) => {
 
             if (editingId) {
                 const res = await axios.patch(
-                    `${API_BASE_URL}/api/milestones/${editingId}`,
+                    `${API_BASE_URL}/milestones/${editingId}`,
                     payload,
                     { headers: authHeaders, withCredentials: true }
                 );
@@ -137,7 +137,7 @@ const MilestoneGanttChart = ({ isPm = false }) => {
                 // For now, hardcode workspaceId from the first milestone or use a fallback
                 const workspaceId = milestones[0]?.workspaceId || 'default';
                 const res = await axios.post(
-                    `${API_BASE_URL}/api/milestones`,
+                    `${API_BASE_URL}/milestones`,
                     { ...payload, workspaceId },
                     { headers: authHeaders, withCredentials: true }
                 );
@@ -153,7 +153,7 @@ const MilestoneGanttChart = ({ isPm = false }) => {
 
     const handleDelete = async (id) => {
         try {
-            await axios.delete(`${API_BASE_URL}/api/milestones/${id}`, {
+            await axios.delete(`${API_BASE_URL}/milestones/${id}`, {
                 headers: authHeaders,
                 withCredentials: true,
             });

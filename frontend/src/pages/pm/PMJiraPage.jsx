@@ -98,7 +98,7 @@ const DroppableColumn = ({ status, children }) => {
 };
 
 // --- Main Page Component ---
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const JiraPage = () => {
     const { token } = useAuth();
@@ -135,14 +135,14 @@ const JiraPage = () => {
 
     const loadData = async () => {
         try {
-            const workspaceRes = await axios.get(`${API_BASE_URL}/api/workspace/me`, { headers: authHeaders, withCredentials: true });
+            const workspaceRes = await axios.get(`${API_BASE_URL}/workspace/me`, { headers: authHeaders, withCredentials: true });
             const workspaceId = workspaceRes.data?._id;
             setWorkspace(workspaceRes.data || null);
 
             const [usersRes, issuesRes, sprintsRes] = await Promise.all([
-                axios.get(`${API_BASE_URL}/api/pm/users${workspaceId ? `?workspaceId=${workspaceId}` : ''}`, { headers: authHeaders, withCredentials: true }),
-                axios.get(`${API_BASE_URL}/api/pm/issues${workspaceId ? `?workspaceId=${workspaceId}` : ''}`, { headers: authHeaders, withCredentials: true }),
-                axios.get(`${API_BASE_URL}/api/pm/sprints`, { headers: authHeaders, withCredentials: true }),
+                axios.get(`${API_BASE_URL}/pm/users${workspaceId ? `?workspaceId=${workspaceId}` : ''}`, { headers: authHeaders, withCredentials: true }),
+                axios.get(`${API_BASE_URL}/pm/issues${workspaceId ? `?workspaceId=${workspaceId}` : ''}`, { headers: authHeaders, withCredentials: true }),
+                axios.get(`${API_BASE_URL}/pm/sprints`, { headers: authHeaders, withCredentials: true }),
             ]);
 
             setUsers(usersRes.data);
@@ -241,7 +241,7 @@ const JiraPage = () => {
 
         try {
             await axios.patch(
-                `${API_BASE_URL}/api/pm/issues/${ticket._id}`,
+                `${API_BASE_URL}/pm/issues/${ticket._id}`,
                 { status: newStatus },
                 { headers: authHeaders, withCredentials: true }
             );
@@ -268,7 +268,7 @@ const JiraPage = () => {
             };
 
             const res = await axios.post(
-                `${API_BASE_URL}/api/pm/issues`,
+                `${API_BASE_URL}/pm/issues`,
                 payload,
                 { headers: authHeaders, withCredentials: true }
             );

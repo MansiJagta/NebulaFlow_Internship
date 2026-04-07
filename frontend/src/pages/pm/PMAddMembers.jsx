@@ -49,7 +49,7 @@ const PMAddMembers = () => {
             setError(null);
             try {
                 // Fetch workspace (will get updated GitHub config if repo switched)
-                const wsRes = await axios.get(`${API_BASE_URL}/api/workspace/me`, {
+                const wsRes = await axios.get(`${API_BASE_URL}/workspace/me`, {
                     withCredentials: true,
                     headers: token ? { Authorization: `Bearer ${token}` } : {},
                 });
@@ -63,7 +63,7 @@ const PMAddMembers = () => {
                     try {
                         const headers = token ? { Authorization: `Bearer ${token}` } : {};
                         const collabRes = await axios.get(
-                            `${API_BASE_URL}/api/github/repo/collaborators?owner=${encodeURIComponent(wsRes.data.githubConfig.repoOwner)}&repo=${encodeURIComponent(wsRes.data.githubConfig.repoName)}`,
+                            `${API_BASE_URL}/github/repo/collaborators?owner=${encodeURIComponent(wsRes.data.githubConfig.repoOwner)}&repo=${encodeURIComponent(wsRes.data.githubConfig.repoName)}`,
                             { headers, withCredentials: true }
                         );
 
@@ -123,7 +123,7 @@ const PMAddMembers = () => {
 
             const headers = token ? { Authorization: `Bearer ${token}` } : {};
             const res = await axios.post(
-                `${API_BASE_URL}/api/github/invite`,
+                `${API_BASE_URL}/github/invite`,
                 {
                     email,
                     githubUsername: githubUsername.trim() || undefined,
@@ -164,7 +164,7 @@ const PMAddMembers = () => {
         try {
             const headers = token ? { Authorization: `Bearer ${token}` } : {};
             await axios.post(
-                `${API_BASE_URL}/api/workspace/${workspace._id}/add-member`,
+                `${API_BASE_URL}/workspace/${workspace._id}/add-member`,
                 { githubUsername: githubUser.login },
                 { headers, withCredentials: true }
             );

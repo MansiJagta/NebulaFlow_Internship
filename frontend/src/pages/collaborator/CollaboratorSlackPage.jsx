@@ -31,10 +31,11 @@ const CollaboratorSlackPage = () => {
     useEffect(() => {
         const loadMeetings = async () => {
             try {
-                const wsRes = await axios.get(`${process.env.VITE_API_URL || 'http://localhost:5000'}/api/workspace/me`, { headers: authHeaders, withCredentials: true });
+                const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+                const wsRes = await axios.get(`${apiBase}/workspace/me`, { headers: authHeaders, withCredentials: true });
                 const ws = wsRes.data;
                 setWorkspace(ws);
-                const meetingsRes = await axios.get(`${process.env.VITE_API_URL || 'http://localhost:5000'}/api/meetings${ws?._id ? `?workspaceId=${ws._id}` : ''}`, { headers: authHeaders, withCredentials: true });
+                const meetingsRes = await axios.get(`${apiBase}/meetings${ws?._id ? `?workspaceId=${ws._id}` : ''}`, { headers: authHeaders, withCredentials: true });
                 setMeetings(meetingsRes.data || []);
             } catch (err) {
                 console.error('[CollaboratorSlackPage] failed to load meetings', err);

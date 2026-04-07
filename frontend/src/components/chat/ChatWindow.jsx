@@ -37,7 +37,7 @@ const ChatWindow = ({ activeChannel, messages, typingText, setMessages, API_BASE
     if (!window.confirm('Are you sure you want to delete this message?')) return;
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/chat/messages/${messageId}`, {
+      const res = await fetch(`${API_BASE_URL}/chat/messages/${messageId}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
@@ -72,7 +72,7 @@ const ChatWindow = ({ activeChannel, messages, typingText, setMessages, API_BASE
 
     setIsSavingEdit(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/chat/messages/${messageId}`, {
+      const res = await fetch(`${API_BASE_URL}/chat/messages/${messageId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -184,7 +184,7 @@ const ChatWindow = ({ activeChannel, messages, typingText, setMessages, API_BASE
                                   />
                                 ) : isPdfFile(att.url) ? (
                                   <a
-                                    href={`${API_BASE_URL}/api/chat/pdf/${message._id}?token=${token}&index=${idx}`}
+                                    href={`${API_BASE_URL}/chat/pdf/${message._id}?token=${token}&index=${idx}`}
                                     target="_blank"
                                     rel="noreferrer"
                                     className="inline-flex items-center gap-2 px-3 py-2 bg-primary/10 hover:bg-primary/20 rounded-lg text-primary hover:text-primary/80 font-medium text-sm transition-all border border-primary/20"
@@ -214,7 +214,7 @@ const ChatWindow = ({ activeChannel, messages, typingText, setMessages, API_BASE
                               />
                             ) : isPdfFile(message.attachmentUrl) ? (
                               <a
-                                href={`${API_BASE_URL}/api/chat/pdf/${message._id}${token ? `?token=${token}` : ''}`}
+                                href={`${API_BASE_URL}/chat/pdf/${message._id}${token ? `?token=${token}` : ''}`}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="inline-flex items-center gap-2 px-3 py-2 bg-primary/10 hover:bg-primary/20 rounded-lg text-primary hover:text-primary/80 font-medium text-sm transition-all border border-primary/20"

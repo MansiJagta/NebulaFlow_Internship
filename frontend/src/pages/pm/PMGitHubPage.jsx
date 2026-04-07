@@ -67,7 +67,7 @@ const GitHubPage = () => {
                 }
 
                 const res = await axios.get(
-                    `${API_BASE_URL}/api/github/repo?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}`,
+                    `${API_BASE_URL}/github/repo?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}`,
                     { withCredentials: true }
                 );
                 setData(res.data);

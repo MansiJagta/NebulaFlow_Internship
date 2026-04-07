@@ -56,7 +56,7 @@ const JiraCard = ({ ticket, isOverlay }) => (
     </div>
 );
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const CollaboratorJiraPage = () => {
     const { user, token } = useAuth();
@@ -74,13 +74,13 @@ const CollaboratorJiraPage = () => {
                 const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
                 // Load workspace first
-                const wsRes = await axios.get(`${API_BASE_URL}/api/workspace/me`, {
+                const wsRes = await axios.get(`${API_BASE_URL}/workspace/me`, {
                     headers,
                     withCredentials: true,
                 });
                 setWorkspace(wsRes.data);
 
-                const res = await axios.get(`${API_BASE_URL}/api/pm/issues`, {
+                const res = await axios.get(`${API_BASE_URL}/pm/issues`, {
                     headers,
                     withCredentials: true,
                 });
