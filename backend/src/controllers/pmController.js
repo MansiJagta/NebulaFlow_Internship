@@ -12,11 +12,15 @@ function generateIssueKey() {
 
 async function getUserWorkspace(userId, workspaceId = null) {
   if (workspaceId) {
-    const ws = await Workspace.findById(workspaceId).populate('members.userId', 'fullName email avatarUrl role');
+    const ws = await Workspace.findOne({
+      _id: workspaceId,
+      'members.userId': userId
+    }).populate('members.userId', 'fullName email avatarUrl role isActive');
     if (ws) return ws;
   }
 
-  return await Workspace.findOne({ 'members.userId': userId }).populate('members.userId', 'fullName email avatarUrl role');
+  // Fallback to the first workspace they belong to if no specific ID or access to that ID
+  return await Workspace.findOne({ 'members.userId': userId }).populate('members.userId', 'fullName email avatarUrl role isActive');
 }
 
 // --- Users ---
@@ -26,9 +30,7 @@ exports.getUsers = async (req, res) => {
     const workspace = await getUserWorkspace(req.user._id, workspaceId);
 
     if (!workspace) {
-      // fallback to global active users when workspace is absent
-      const users = await User.find({ isActive: true }).select('fullName email role avatarUrl');
-      return res.json(users);
+      return res.json([]); // Return empty if no workspace context
     }
 
     const members = workspace.members
@@ -278,5 +280,22 @@ exports.updateIssue = async (req, res) => {
   } catch (err) {
     console.error('[pm] updateIssue failed', err);
     res.status(500).json({ error: 'Failed to update issue' });
+  }
+};
+
+exports.deleteIssue = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const issue = await Issue.findByIdAndDelete(id);
+
+    if (!issue) {
+      return res.status(404).json({ error: 'Issue not found' });
+    }
+
+    res.json({ message: 'Issue deleted' });
+  } catch (err) {
+    console.error('[pm] deleteIssue failed', err);
+    res.status(500).json({ error: 'Failed to delete issue' });
   }
 };

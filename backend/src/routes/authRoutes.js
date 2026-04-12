@@ -10,6 +10,7 @@ const {
   githubCallback,
   getGitHubRepos,
   getGitHubStatus,
+  getTestToken,
 } = require('../controllers/authController');
 const { acceptInvite } = require('../controllers/inviteController');
 
@@ -20,6 +21,9 @@ router.post('/register', registerWithEmail);
 router.post('/login-email', loginWithEmailPassword);
 router.get('/me', getCurrentUser);
 router.post('/logout', logout);
+
+// 🧪 DEV: Get test token (development only)
+router.get('/test-token', getTestToken);
 
 // Invite acceptance
 router.get('/accept-invite', acceptInvite);

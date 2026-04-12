@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import axios from 'axios';
 import { useAuth } from '@/contexts/AuthContext';
 import { DndContext, DragOverlay, closestCorners, KeyboardSensor, PointerSensor, useSensor, useSensors, defaultDropAnimationSideEffects } from '@dnd-kit/core';
@@ -13,7 +13,9 @@ const MiniKanban = () => {
     const [items, setItems] = useState([]);
     const [activeId, setActiveId] = useState(null);
 
-    const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+    const authHeaders = useMemo(() => (
+        token ? { Authorization: `Bearer ${token}` } : {}
+    ), [token]);
 
     useEffect(() => {
         const load = async () => {

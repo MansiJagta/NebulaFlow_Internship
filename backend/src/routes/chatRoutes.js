@@ -14,8 +14,37 @@ const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'nebula-flow-dev-secret';
 
-// All chat routes require authenticated user context (req.user)
+// ✅ ALL chat routes require authentication
 router.use(requireAuth);
+
+// =======================================
+// ✅ GET WORKSPACE CHANNELS (Public & DMs belonging to current user)
+// =======================================
+router.get("/workspace/:workspaceId/channels", async (req, res) => {
+  try {
+    const { workspaceId } = req.params;
+    const userId = req.user.id;
+
+    if (!workspaceId) {
+      return res.status(400).json({ message: "workspaceId is required" });
+    }
+
+    // Find all public channels in workspace OR private ones where user is a member
+    const channels = await Channel.find({
+      workspaceId,
+      $or: [
+        { isPrivate: false },
+        { isPrivate: true, members: userId }
+      ]
+    }).sort({ isPrivate: 1, name: 1 });
+
+    res.json(channels);
+  } catch (err) {
+    console.error('[chat] GET workspace channels failed:', err);
+    res.status(500).json({ message: "Failed to fetch workspace channels" });
+  }
+});
+
 
 // =======================================
 // ✅ CREATE CHANNEL
@@ -45,10 +74,10 @@ router.post("/channel/create", async (req, res) => {
     }
 
     const channel = await Channel.create({
-      name,
+      name: name || (isPrivate ? 'dm' : 'New Channel'),
       workspaceId,
       isPrivate,
-      members
+      members: isPrivate ? members : []
     });
 
     res.json(channel);
@@ -129,7 +158,7 @@ router.post("/send/:channelId", checkAccess, async (req, res) => {
 router.post("/upload/:channelId", checkAccess, async (req, res) => {
   try {
     const rawFiles = req.files?.file;
-    const content = req.body.content || "";
+    const content = req.body?.content || "";
     
     if (!rawFiles && !content) {
       return res.status(400).json({ message: "No content or files provided" });

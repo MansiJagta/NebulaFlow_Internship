@@ -40,6 +40,10 @@ const meetingSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    location: {
+      type: String,
+      default: '',
+    },
   },
   {
     timestamps: true,

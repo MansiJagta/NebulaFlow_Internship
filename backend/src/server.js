@@ -38,7 +38,12 @@ chatSocket(io);
 app.set('io', io); // Make io accessible to our routes
 
 // Middleware
-app.use(cors({ origin: process.env.FRONTEND_URL, credentials: true }));
+app.use(cors({ 
+  origin: process.env.FRONTEND_URL, 
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 
 // File upload middleware (for Cloudinary)
@@ -57,7 +62,12 @@ app.use(
     secret: process.env.SESSION_SECRET || 'nebula-flow-secret',
     resave: false,
     saveUninitialized: false,
-    cookie: { secure: false }
+    cookie: { 
+      secure: false,  // HTTP in dev, HTTPS in prod
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    }
   })
 );
 
@@ -92,6 +102,24 @@ connectDB().then(async () => {
   try {
     const { seedDefaultData } = require('./seed');
     await seedDefaultData();
+
+    // 🧪 DEV: Create test user in development
+    if (process.env.NODE_ENV !== 'production') {
+      try {
+        const { getOrCreateTestUser } = require('./utils/devHelper');
+        const testUserInfo = await getOrCreateTestUser();
+        console.log('\n🧪 TEST CREDENTIALS (Development Only)');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log(`Email: ${testUserInfo.credentials.email}`);
+        console.log(`Password: ${testUserInfo.credentials.password}`);
+        console.log(`Token: ${testUserInfo.token}`);
+        console.log('\nUsage: Add to request headers:');
+        console.log(`Authorization: Bearer ${testUserInfo.token}`);
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+      } catch (err) {
+        console.warn('[devHelper] Could not create test user', err.message);
+      }
+    }
   } catch (err) {
     console.warn('[seed] Could not seed default data', err);
   }

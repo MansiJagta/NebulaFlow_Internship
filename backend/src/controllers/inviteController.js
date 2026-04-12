@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const UserIdentity = require('../models/UserIdentity');
 const Workspace = require('../models/Workspace');
+const { decrypt } = require('../utils/encryption');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:8080';
 const JWT_SECRET = process.env.JWT_SECRET || 'nebula-flow-dev-secret';
@@ -74,12 +75,12 @@ async function inviteGitHubCollaborator(repoOwner, repoName, collaborator, token
 async function getWorkspaceGitHubToken(workspace, currentUser) {
     if (currentUser) {
         const identity = await UserIdentity.findOne({ userId: currentUser._id, provider: 'github' });
-        if (identity?.accessTokenEncrypted) return identity.accessTokenEncrypted;
+        if (identity?.accessTokenEncrypted) return decrypt(identity.accessTokenEncrypted);
     }
 
     for (const member of workspace.members) {
         const identity = await UserIdentity.findOne({ userId: member.userId._id || member.userId, provider: 'github' });
-        if (identity?.accessTokenEncrypted) return identity.accessTokenEncrypted;
+        if (identity?.accessTokenEncrypted) return decrypt(identity.accessTokenEncrypted);
     }
 
     return null;
@@ -93,6 +94,28 @@ async function getWorkspaceGitHubToken(workspace, currentUser) {
  * so the recipient sees it as a personal invite.
  * 
  * Accepts workspaceId via query/body, or looks up workspace by sender + repoName.
+ * 
+ * Request body:
+ * {
+ *   email: string,           // (required) Email of invitee
+ *   githubUsername?: string, // GitHub username for repo invite
+ *   role?: string,           // 'pm' or 'collaborator' (defaults to 'collaborator' if not specified)
+ *   repoOwner?: string,      // GitHub repo owner
+ *   repoName?: string,       // GitHub repo name
+ *   workspaceId?: string     // MongoDB workspace ID
+ * }
+ * 
+ * Role Assignment Logic:
+ * - If role = 'pm': User joins as 'pm' in workspace
+ * - If role not specified or role != 'pm': User joins as 'collaborator' (default role)
+ * 
+ * Returns:
+ * {
+ *   emailSent: boolean,
+ *   githubInvited: boolean,
+ *   errors: string[],
+ *   inviteToken: string
+ * }
  */
 exports.sendInvite = async (req, res) => {
     const { email, githubUsername, role, repoOwner, repoName, workspaceId } = req.body;
@@ -124,7 +147,9 @@ exports.sendInvite = async (req, res) => {
     }
 
     // Normalize role for workspace enums (pm/collaborator)
+    // Default to 'collaborator' if role is not explicitly 'pm'
     const normalizedRole = (role && String(role).toLowerCase() === 'pm') ? 'pm' : 'collaborator';
+    console.log(`[sendInvite] Inviting ${email} with role: ${normalizedRole}`);
 
     // Generate invite token
     const inviteToken = generateInviteToken(workspace._id.toString(), email, normalizedRole);
@@ -216,7 +241,7 @@ exports.sendInvite = async (req, res) => {
                 let token = req.session?.githubToken;
                 if (!token) {
                     const identity = await UserIdentity.findOne({ userId, provider: 'github' });
-                    token = identity?.accessTokenEncrypted;
+                    token = identity?.accessTokenEncrypted ? decrypt(identity.accessTokenEncrypted) : null;
                 }
 
                 if (!token) {
@@ -246,6 +271,20 @@ exports.sendInvite = async (req, res) => {
  *
  * Accepts an invite and auto-adds existing users to workspace,
  * or redirects new users to signup with invite token.
+ *
+ * Role Assignment Logic for Invites:
+ * - If invite token has role='pm': User joins as 'pm' in workspace
+ * - If invite token has role='collaborator': User joins as 'collaborator'
+ * - Default: Invite tokens encode role, typically 'collaborator' if not specified
+ *
+ * Returns:
+ * {
+ *   action: 'redirect_to_signup' | 'added_to_workspace_authenticated' | 'added_to_workspace_login' | 'already_member',
+ *   message: string,
+ *   role: string,
+ *   workspaceId: string,
+ *   ...
+ * }
  */
 exports.acceptInvite = async (req, res) => {
     const { token } = req.query;
@@ -307,10 +346,18 @@ exports.acceptInvite = async (req, res) => {
         }
 
         // Add user to workspace
-        const normalizedRole = (role && String(role).toLowerCase() === 'pm') ? 'pm' : 'collaborator';
+        let finalRole = (role && String(role).toLowerCase() === 'pm') ? 'pm' : 'collaborator';
+
+        if (workspace.githubConfig && workspace.githubConfig.repoOwner) {
+            const inviteeIdentity = await UserIdentity.findOne({ userId: existingUser._id, provider: 'github' });
+            if (inviteeIdentity && inviteeIdentity.username && inviteeIdentity.username.toLowerCase() === workspace.githubConfig.repoOwner.toLowerCase()) {
+                finalRole = 'pm';
+            }
+        }
+
         workspace.members.push({
             userId: existingUser._id,
-            role: normalizedRole,
+            role: finalRole,
             joinedAt: new Date(),
         });
 

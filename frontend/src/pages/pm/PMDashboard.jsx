@@ -5,7 +5,7 @@ import NebulaBarChart from '@/components/common/NebulaBarChart';
 import MiniKanban from '@/components/pm/MiniKanban';
 import QuickMessage from '@/components/pm/QuickMessage';
 import { motion } from 'framer-motion';
-import { ListChecks, GitBranch, Star, Clock, GitMerge, User, Loader2, Github } from 'lucide-react';
+import { ListChecks, GitBranch, Star, Clock, GitMerge, User, Loader2, Github, Slack, Trello } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { sprintStats } from '@/data/jiraMockData';
 import { commitFrequency as mockCommitFrequency } from '@/data/githubMockData';
@@ -29,48 +29,121 @@ const PMDashboard = () => {
     const [ghData, setGhData] = useState(null);
     const [ghLoading, setGhLoading] = useState(false);
 
-    useEffect(() => {
-        if (!selectedRepo) return;
+    const [perfData, setPerfData] = useState(null);
+    const [issues, setIssues] = useState([]);
+    const [sprints, setSprints] = useState([]);
 
-        const fetchGhData = async () => {
+    useEffect(() => {
+        const fetchData = async () => {
             setGhLoading(true);
             try {
-                const owner = selectedRepo.owner
-                    || (selectedRepo.fullName?.includes('/')
-                        ? selectedRepo.fullName.split('/')[0]
-                        : null);
-                const repo = selectedRepo.name;
-                if (!owner) return;
+                // 1. Get Workspace
+                const wsRes = await axios.get(`${API_BASE_URL}/workspace/me`, { withCredentials: true });
+                const workspaceId = wsRes.data?._id;
 
-                const res = await axios.get(
-                    `${API_BASE_URL}/github/repo?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}`,
-                    { withCredentials: true }
-                );
-                setGhData(res.data);
+                // 2. Fetch Performance, GitHub, Issues, and Sprints data in parallel
+                const [perfRes, githubRes, issuesRes, sprintsRes] = await Promise.all([
+                    axios.get(`${API_BASE_URL}/performance/${workspaceId}`, { withCredentials: true }),
+                    selectedRepo ? axios.get(
+                        `${API_BASE_URL}/github/repo?owner=${encodeURIComponent(
+                            selectedRepo.owner || (selectedRepo.fullName?.includes('/') ? selectedRepo.fullName.split('/')[0] : '')
+                        )}&repo=${encodeURIComponent(selectedRepo.name)}`,
+                        { withCredentials: true }
+                    ) : Promise.resolve({ data: null }),
+                    axios.get(`${API_BASE_URL}/pm/issues${workspaceId ? `?workspaceId=${workspaceId}` : ''}`, { withCredentials: true }),
+                    axios.get(`${API_BASE_URL}/pm/sprints`, { withCredentials: true })
+                ]);
+
+                setPerfData(perfRes.data);
+                if (githubRes.data) setGhData(githubRes.data);
+                if (issuesRes.data) setIssues(issuesRes.data);
+                if (sprintsRes.data) setSprints(sprintsRes.data);
             } catch (err) {
-                console.error('[PMDashboard] GitHub fetch failed:', err);
+                console.error('[PMDashboard] Data fetch failed:', err);
             } finally {
                 setGhLoading(false);
             }
         };
 
-        fetchGhData();
+        fetchData();
     }, [selectedRepo, API_BASE_URL]);
 
     // Derived values – prefer real data, fall back to sensible defaults
-    const openPRs = ghData?.openPRsCount ?? 5;
-    const stars = ghData?.repoInfo?.stars ?? null;
-    const openIssues = ghData?.repoInfo?.openIssues ?? null;
+    const openPRs = ghData?.openPRsCount ?? 0;
 
-    // Commit chart data: last 7 days from GitHub (or mock)
-    const rawFrequency = ghData?.commitFrequency ?? mockCommitFrequency;
+    // Commit chart data: last 7 days from GitHub
+    const rawFrequency = ghData?.commitFrequency ?? [];
     const commitChartData = rawFrequency.slice(-7).map(d => ({
         day: d.date,
         commits: d.count,
     }));
 
-    // Latest 4 commits for the inline feed strip
+    // Real Active Tasks & Jira Completion
+    const activeTasks = issues.filter(i => i.status !== 'done').length;
+    const jiraDoneCount = issues.filter(i => i.status === 'done').length;
+    const jiraTotalCount = issues.length;
+
+    // Local Sprint Burndown Calculation
+    const activeSprint = sprints.find(s => s.isActive) || sprints[0];
+    let sprintBurndownData = [];
+    if (activeSprint && issues.length > 0) {
+        const start = new Date(activeSprint.startsOn);
+        const end = new Date(activeSprint.endsOn);
+        let durationDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+        if (durationDays <= 0) durationDays = 14; // fallback duration
+
+        const sprintIssues = issues.filter(i => i.sprintId === activeSprint._id);
+        const totalPoints = sprintIssues.reduce((sum, i) => sum + (i.storyPoints || 0), 0) || 10;
+
+        for (let i = 0; i <= durationDays; i++) {
+            const currentDay = new Date(start);
+            currentDay.setDate(start.getDate() + i);
+            currentDay.setHours(23, 59, 59, 999);
+
+            const completedOnDay = sprintIssues.filter(issue => issue.status === 'done' && new Date(issue.updatedAt) <= currentDay);
+            const pointsDone = completedOnDay.reduce((sum, issue) => sum + (issue.storyPoints || 0), 0);
+
+            sprintBurndownData.push({
+                day: `Day ${i + 1}`,
+                ideal: Math.max(0, totalPoints - (totalPoints / durationDays) * i),
+                remaining: Math.max(0, totalPoints - pointsDone)
+            });
+        }
+    } else {
+        sprintBurndownData = sprintStats.burndown; // Fallback to mock if no concrete active data
+    }
+
+    // Dynamic Activity Feed Setup
     const recentCommits = (ghData?.recentCommits ?? []).slice(0, 4);
+    const feedActivities = [];
+    
+    recentCommits.forEach((c, i) => {
+        feedActivities.push({
+            id: `commit-${c.sha || i}`,
+            user: c.author,
+            action: 'pushed',
+            target: c.message.substring(0, 40),
+            time: 'Recently',
+            type: 'commit',
+            rawDate: new Date(c.date || Date.now())
+        });
+    });
+
+    const recentIssues = [...issues].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).slice(0, 5);
+    recentIssues.forEach(iss => {
+        feedActivities.push({
+            id: `issue-${iss._id}`,
+            user: iss.assigneeUser?.fullName || iss.reporterUser?.fullName || 'Someone',
+            action: iss.status === 'done' ? 'completed' : 'updated',
+            target: `${iss.issueKey}: ${iss.title.substring(0, 30)}`,
+            time: 'Recently',
+            type: 'task',
+            rawDate: new Date(iss.updatedAt || iss.createdAt)
+        });
+    });
+
+    feedActivities.sort((a, b) => b.rawDate - a.rawDate);
+    const topActivities = feedActivities.slice(0, 5);
 
     return (
         <div className="space-y-6">
@@ -99,13 +172,9 @@ const PMDashboard = () => {
             </motion.div>
 
             {/* KPI Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <KpiCard title="Active Tasks" value={24} icon={<ListChecks className="w-5 h-5" />} trend={{ value: 12, positive: true }} delay={0} />
-                {stars !== null ? (
-                    <KpiCard title="Repo Stars" value={stars} icon={<Star className="w-5 h-5" />} trend={{ value: 0, positive: true }} delay={0.1} />
-                ) : (
-                    <KpiCard title="Team Velocity" value={42} suffix="pts" icon={<Star className="w-5 h-5" />} trend={{ value: 8, positive: true }} delay={0.1} />
-                )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                <KpiCard title="Active Tasks" value={activeTasks} icon={<ListChecks className="w-5 h-5" />} trend={{ value: activeTasks > 5 ? 5 : 0, positive: false }} delay={0} />
+                <KpiCard title="Team Velocity" value={perfData?.totalSprintPoints || 0} suffix="pts" icon={<Star className="w-5 h-5" />} trend={{ value: 8, positive: true }} delay={0.1} />
                 <KpiCard
                     title="Open PRs"
                     value={openPRs}
@@ -113,11 +182,20 @@ const PMDashboard = () => {
                     trend={{ value: openPRs > 5 ? openPRs - 5 : 0, positive: false }}
                     delay={0.2}
                 />
-                {openIssues !== null ? (
-                    <KpiCard title="Open Issues" value={openIssues} icon={<GitMerge className="w-5 h-5" />} trend={{ value: 0, positive: false }} delay={0.3} />
-                ) : (
-                    <KpiCard title="Sprint Time" value={8} suffix="days" icon={<Clock className="w-5 h-5" />} delay={0.3} />
-                )}
+                <KpiCard 
+                    title="Slack Activity" 
+                    value={perfData?.slackActivity || 0} 
+                    suffix="msg" 
+                    icon={<Slack className="w-5 h-5 text-purple-400" />} 
+                    delay={0.3} 
+                />
+                <KpiCard 
+                    title="Jira Done" 
+                    value={jiraDoneCount} 
+                    suffix={`/${jiraTotalCount}`} 
+                    icon={<Trello className="w-5 h-5 text-blue-500" />} 
+                    delay={0.4} 
+                />
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
@@ -141,7 +219,7 @@ const PMDashboard = () => {
                             </div>
                         </div>
                         <ResponsiveContainer width="100%" height={250}>
-                            <AreaChart data={sprintStats.burndown}>
+                            <AreaChart data={sprintBurndownData}>
                                 <defs>
                                     <linearGradient id="burnGrad" x1="0" y1="0" x2="0" y2="1">
                                         <stop offset="0%" stopColor="hsl(var(--nebula-cyan))" stopOpacity={0.3} />
@@ -219,7 +297,7 @@ const PMDashboard = () => {
                         </motion.div>
                     )}
 
-                    <ActivityFeed />
+                    <ActivityFeed activities={topActivities} />
 
                     <QuickMessage />
                 </div>

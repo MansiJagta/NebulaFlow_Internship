@@ -16,7 +16,7 @@ const CollaboratorSlackPage = () => {
     const [message, setMessage] = useState('');
     const [meetings, setMeetings] = useState([]);
     const [workspace, setWorkspace] = useState(null);
-    const { token } = useAuth();
+    const { token, user } = useAuth();
 
     const filteredMessages = activeTab === 'mentions'
         ? slackMessages.filter(m => m.message.includes('@Alice'))
@@ -87,17 +87,19 @@ const CollaboratorSlackPage = () => {
 
                     <div>
                         <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-2 mb-2 flex items-center justify-between">
-                            Recent DMs
+                            Direct Messages
                         </h3>
-                        {directMessages.slice(0, 4).map(dm => (
-                            <button key={dm.id} className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-sm text-foreground/70 hover:bg-muted/30 hover:text-foreground mb-0.5 transition-all group">
+                        {workspace?.members?.filter(m => m._id !== user?.id).map(member => (
+                            <button key={member._id} className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-sm text-foreground/70 hover:bg-muted/30 hover:text-foreground mb-0.5 transition-all group">
                                 <div className="relative">
                                     <Avatar className="w-5 h-5 rounded-md">
-                                        <AvatarFallback className="text-[9px] bg-muted text-muted-foreground font-bold rounded-md group-hover:bg-muted/80">{dm.avatar}</AvatarFallback>
+                                        <AvatarFallback className="text-[9px] bg-muted text-muted-foreground font-bold rounded-md group-hover:bg-muted/80">
+                                            {member.fullName?.substring(0, 2).toUpperCase() || '??'}
+                                        </AvatarFallback>
                                     </Avatar>
-                                    {dm.online && <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-green-500 rounded-full border-2 border-sidebar" />}
+                                    <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-green-500 rounded-full border-2 border-sidebar" />
                                 </div>
-                                <span className="flex-1 text-left truncate">{dm.user}</span>
+                                <span className="flex-1 text-left truncate">{member.fullName}</span>
                             </button>
                         ))}
                     </div>

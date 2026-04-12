@@ -33,7 +33,7 @@ const SlackPage = () => {
   const { user, token, API_BASE_URL, selectedRepo } = useAuth();
 
   const [channels, setChannels] = useState([]);
-  const [users, setUsers] = useState([]);
+  const [collaborators, setCollaborators] = useState([]);
   const [activeChannel, setActiveChannel] = useState(null);
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
@@ -69,30 +69,40 @@ const SlackPage = () => {
 
   const ensurePublicChannels = useCallback(async () => {
     try {
-      const created = await Promise.all(
-        PUBLIC_CHANNEL_NAMES.map(async (name) => {
-          const response = await axios.post(
-            `${API_BASE_URL}/chat/channel/create`,
-            {
-              name,
-              workspaceId: selectedRepo?.workspaceId,
-              isPrivate: false,
-              members: [],
-            },
-            axiosConfig
-          );
+      // 1. Fetch current channels in this workspace
+      const res = await axios.get(`${API_BASE_URL}/chat/workspace/${selectedRepo.workspaceId}/channels`, axiosConfig);
+      let workspaceChannels = Array.isArray(res.data) ? res.data : [];
 
-          const id = response?.data?._id;
-          return {
-            id,
-            name,
-            type: 'channel',
-            unread: 0,
-          };
-        })
-      );
+      // 2. Filter out DMs for the "Channels" list
+      const publicChannels = workspaceChannels.filter(c => !c.isPrivate);
+      
+      // 3. If standard public channels are missing, create them
+      const existingNames = new Set(publicChannels.map(c => c.name));
+      const missing = PUBLIC_CHANNEL_NAMES.filter(name => !existingNames.has(name));
 
-      return created.filter((item) => item.id);
+      if (missing.length > 0) {
+        console.log(`[SlackPage] Creating missing public channels: ${missing.join(', ')}`);
+        const created = await Promise.all(
+          missing.map(async (name) => {
+            const response = await axios.post(
+              `${API_BASE_URL}/chat/channel/create`,
+              { name, workspaceId: selectedRepo.workspaceId, isPrivate: false },
+              axiosConfig
+            );
+            return response.data;
+          })
+        );
+        workspaceChannels = [...workspaceChannels, ...created];
+      }
+
+      // 4. Return the IDs for socket joining and state
+      return workspaceChannels.map(c => ({
+        id: c._id,
+        name: c.name,
+        isPrivate: c.isPrivate,
+        members: c.members || [],
+        unread: 0
+      }));
     } catch (err) {
       console.error('Failed to ensure public channels', err);
       return [];
@@ -105,28 +115,39 @@ const SlackPage = () => {
     }
 
     try {
-      const [channelData, usersRes] = await Promise.all([
+      console.log(`[SlackPage] Initializing Slack for workspace: ${selectedRepo.workspaceId}`);
+      
+      const [channelData, collabRes] = await Promise.all([
         ensurePublicChannels(),
-        axios.get(`${API_BASE_URL}/pm/users`, axiosConfig),
+        axios.get(`${API_BASE_URL}/github/repo/collaborators?owner=${selectedRepo.owner}&repo=${selectedRepo.name}`, axiosConfig),
       ]);
 
-      setChannels(channelData);
+      // Populate channels list (public only)
+      setChannels(channelData.filter(c => !c.isPrivate));
 
-      const nextUsers = (Array.isArray(usersRes.data) ? usersRes.data : [])
-        .filter((entry) => entry._id !== user.id)
+      // Populate collaborators list (strictly GitHub collaborators with accounts, matching Add Members page)
+      const githubTeammates = (Array.isArray(collabRes.data) ? collabRes.data : [])
+        .filter((entry) => entry.hasAccount && entry.userId !== user.id)
         .map((entry) => ({
-          id: entry._id,
-          name: entry.fullName || entry.email,
-          email: entry.email,
+          id: entry.userId,
+          name: entry.name || entry.login,
+          email: entry.email || `${entry.login}@github.com`,
           avatarUrl: entry.avatarUrl || '',
           online: true,
           unread: 0,
         }));
+      setCollaborators(githubTeammates);
 
-      setUsers(nextUsers);
+      // Join ALL socket rooms for this workspace (public channels + your DMs)
+      const socket = initializeSocket(API_BASE_URL);
+      channelData.forEach(channel => {
+        socket.emit('join_channel', channel.id);
+      });
 
+      // Set first public channel as active by default if none selected
       if (channelData.length > 0) {
-        setActiveChannel((prev) => prev || channelData[0]);
+        const defaultChannel = channelData.find(c => !c.isPrivate) || channelData[0];
+        setActiveChannel((prev) => prev || defaultChannel);
       }
     } catch (error) {
       console.error('Failed to initialize Slack page', error);
@@ -162,7 +183,7 @@ const SlackPage = () => {
         )
       );
 
-      setUsers((prev) => {
+      setCollaborators((prev) => {
         const senderId = getSenderId(payload.sender);
 
         return prev.map((dmUser) => {
@@ -239,7 +260,7 @@ const SlackPage = () => {
       }
 
       if (activeChannel.type === 'dm' && activeChannel.userId) {
-        setUsers((prev) =>
+        setCollaborators((prev) =>
           prev.map((dmUser) =>
             dmUser.id === activeChannel.userId
               ? {
@@ -376,7 +397,7 @@ const SlackPage = () => {
     <div className="flex h-[calc(100vh-140px)] rounded-xl overflow-hidden border border-border/40 bg-card shadow-2xl">
       <ChannelList
         channels={channels}
-        users={users}
+        users={collaborators}
         activeChannel={activeChannel}
         onSelectChannel={openPublicChannel}
         onSelectDm={openDmChannel}

@@ -5,6 +5,7 @@ const {
   getIssues,
   createIssue,
   updateIssue,
+  deleteIssue,
 } = require('../controllers/pmController');
 const { requireAuth } = require('../middleware/auth');
 
@@ -17,5 +18,6 @@ router.get('/sprints', getSprints);
 router.get('/issues', getIssues);
 router.post('/issues', createIssue);
 router.patch('/issues/:id', updateIssue);
+router.delete('/issues/:id', deleteIssue);
 
 module.exports = router;

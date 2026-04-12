@@ -80,18 +80,20 @@ const RepositorySelection = () => {
         try {
             // Create workspace with GitHub config
             const workspaceRes = await axios.post(
-                `${BACKEND_URL}/api/workspace`,
+                `${BACKEND_URL}/api/github/sync-repo`,
                 {
-                    name: `${repo.name}-workspace`,
-                    description: repo.description || `Workspace for ${repo.name}`,
-                    githubConfig: {
-                        repoOwner: repo.owner,
-                        repoName: repo.name,
-                        repoId: repo.id,
-                    },
+                    repoOwner: repo.owner,
+                    repoName: repo.name,
                 },
-                { withCredentials: true }
+                { 
+                    withCredentials: true,
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                }
             );
+
+            const { workspace, userRole } = workspaceRes.data;
 
             // Save the full repo object so GitHub page & Members page can use it
             setRepo({
@@ -104,17 +106,18 @@ const RepositorySelection = () => {
                 forks: repo.forks,
                 owner: repo.owner || (repo.fullName || '').split('/')[0],
                 private: repo.isPrivate ?? repo.private ?? false,
-                workspaceId: workspaceRes.data._id,
+                workspaceId: workspace._id,
             });
 
             setTimeout(() => {
                 setSyncing(prev => ({ ...prev, [repo.id]: false }));
-                navigate(role === 'pm' ? "/pm/dashboard" : "/collaborator/dashboard");
+                navigate(userRole === 'pm' ? "/pm/dashboard" : "/collaborator/dashboard");
             }, 800);
         } catch (err) {
             console.error('Failed to create workspace:', err);
+            console.error('Error details:', err.response?.data || err.message);
             setSyncing(prev => ({ ...prev, [repo.id]: false }));
-            alert('Failed to create workspace. Please try again.');
+            alert(`Failed to create workspace. ${err.response?.data?.details || 'Please try again.'}`);
         }
     };
 

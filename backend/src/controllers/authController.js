@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const UserIdentity = require('../models/UserIdentity');
+const { encrypt, decrypt } = require('../utils/encryption');
 
 const FRONTEND_URL = process.env.FRONTEND_URL;
 const JWT_SECRET = process.env.JWT_SECRET || 'nebula-flow-dev-secret';
@@ -214,8 +215,8 @@ exports.handleGoogleCallback = async (req, res) => {
     if (userIdentity) {
       user = await User.findById(userIdentity.userId);
       // Always update tokens so they stay fresh
-      userIdentity.accessTokenEncrypted = accessToken;
-      if (refreshToken) userIdentity.refreshTokenEncrypted = refreshToken;
+      userIdentity.accessTokenEncrypted = encrypt(accessToken);
+      if (refreshToken) userIdentity.refreshTokenEncrypted = encrypt(refreshToken);
       userIdentity.tokenExpiresAt = expiresIn ? new Date(Date.now() + expiresIn * 1000) : null;
       await userIdentity.save();
     } else {
@@ -237,8 +238,8 @@ exports.handleGoogleCallback = async (req, res) => {
         provider: 'google',
         providerUserId,
         username: email,
-        accessTokenEncrypted: accessToken,
-        refreshTokenEncrypted: refreshToken || null,
+        accessTokenEncrypted: encrypt(accessToken),
+        refreshTokenEncrypted: refreshToken ? encrypt(refreshToken) : null,
         tokenExpiresAt: expiresIn
           ? new Date(Date.now() + expiresIn * 1000)
           : null,
@@ -334,7 +335,7 @@ exports.githubCallback = async (req, res) => {
       provider: 'github',
       providerUserId: githubUser.id.toString(),
       username: githubUser.login,
-      accessTokenEncrypted: accessToken,
+      accessTokenEncrypted: encrypt(accessToken),
       tokenExpiresAt: null,
     });
 
@@ -361,7 +362,7 @@ exports.getGitHubRepos = async (req, res) => {
       return res.status(400).json({ error: 'GitHub not connected' });
     }
 
-    const token = identity.accessTokenEncrypted;
+    const token = decrypt(identity.accessTokenEncrypted);
 
     const response = await axios.get('https://api.github.com/user/repos', {
       headers: { Authorization: `Bearer ${token}` },
@@ -397,5 +398,29 @@ exports.getGitHubStatus = async (req, res) => {
     return res.json({ connected: !!identity });
   } catch (err) {
     return res.json({ connected: false });
+  }
+};
+
+// -------- Development Helper: Get test token --------
+// ⚠️ ONLY FOR DEVELOPMENT - Remove or restrict in production
+exports.getTestToken = async (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(403).json({ error: 'Not available in production' });
+  }
+
+  try {
+    const { getOrCreateTestUser } = require('../utils/devHelper');
+    const result = await getOrCreateTestUser();
+    
+    res.json({
+      message: '🧪 Development Test Credentials',
+      credentials: result.credentials,
+      token: result.token,
+      user: result.user,
+      usage: 'Add "Authorization: Bearer <token>" to your API requests',
+    });
+  } catch (err) {
+    console.error('[getTestToken] failed', err);
+    res.status(500).json({ error: 'Failed to generate test token' });
   }
 };

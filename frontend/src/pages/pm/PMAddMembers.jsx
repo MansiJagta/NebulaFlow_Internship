@@ -23,13 +23,19 @@ const FALLBACK_INVITES = [
     { id: '6', email: 'frank@nebula.dev', role: 'QA', status: 'pending' },
 ];
 
+import { useRBAC } from '@/hooks/useRBAC';
+
 const PMAddMembers = () => {
     const navigate = useNavigate();
+    const { isPM, canInvite } = useRBAC();
     const { user, selectedRepo, token, API_BASE_URL } = useAuth();
+    
+    // userIsPM will be true if the user has PM role in the workspace
+    // This controls visibility of invite forms and add buttons
 
     const [email, setEmail] = useState('');
     const [githubUsername, setGithubUsername] = useState('');
-    const [role, setRole] = useState('Developer');
+    const [role, setRole] = useState('collaborator');
     const [isInviting, setIsInviting] = useState(false);
     const [inviteResult, setInviteResult] = useState(null);
     const [invites, setInvites] = useState(FALLBACK_INVITES);
@@ -48,63 +54,85 @@ const PMAddMembers = () => {
             setLoading(true);
             setError(null);
             try {
-                // Fetch workspace (will get updated GitHub config if repo switched)
+                // 1. Fetch workspace (will get updated GitHub config if repo switched)
                 const wsRes = await axios.get(`${API_BASE_URL}/workspace/me`, {
                     withCredentials: true,
                     headers: token ? { Authorization: `Bearer ${token}` } : {},
                 });
-                setWorkspace(wsRes.data);
+                const currentWs = wsRes.data;
+                setWorkspace(currentWs);
 
-                const wsMembersData = wsRes.data?.members || [];
+                const wsMembersData = currentWs?.members || [];
                 setWorkspaceMembers(wsMembersData);
 
-                // If workspace has GitHub config, fetch collaborators
-                if (wsRes.data?.githubConfig?.repoOwner && wsRes.data?.githubConfig?.repoName) {
+                // 2. Determine repoOwner and repoName
+                // ALWAYS prefer selectedRepo since that's what the user actively chose
+                const owner = selectedRepo?.owner || currentWs?.githubConfig?.repoOwner;
+                const repo = selectedRepo?.name || selectedRepo?.fullName?.split('/')[1] || currentWs?.githubConfig?.repoName;
+
+                console.log('[PMAddMembers] Fetching for:', { owner, repo, selectedRepo });
+
+                // 3. Fetch ALL collaborators from GitHub
+                let githubCollab = [];
+                let enriched = [];
+
+                if (owner && repo) {
                     try {
                         const headers = token ? { Authorization: `Bearer ${token}` } : {};
                         const collabRes = await axios.get(
-                            `${API_BASE_URL}/github/repo/collaborators?owner=${encodeURIComponent(wsRes.data.githubConfig.repoOwner)}&repo=${encodeURIComponent(wsRes.data.githubConfig.repoName)}`,
+                            `${API_BASE_URL}/github/repo/collaborators?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}`,
                             { headers, withCredentials: true }
                         );
 
-                        const githubCollab = collabRes.data || [];
+                        githubCollab = collabRes.data || [];
                         setGithubCollaborators(githubCollab);
 
-                        // Find GitHub collaborators who are NOT in workspace
-                        const availableForAdd = githubCollab.filter(ghUser => {
-                            const inWorkspace = wsMembersData.some(wsMember => 
-                                wsMember.email?.toLowerCase() === `${ghUser.login}@github.com`.toLowerCase() ||
-                                wsMember.email?.toLowerCase() === ghUser.login.toLowerCase()
+                        // Enrichment: Mark which ones are in workspace vs on platform vs unknown
+                        enriched = githubCollab.map(ghUser => {
+                            const memberInWs = wsMembersData.find(wsMember => 
+                                (wsMember.email?.toLowerCase() === ghUser.email?.toLowerCase()) ||
+                                (wsMember.userId?._id?.toString() === ghUser.userId?.toString())
                             );
-                            return !inWorkspace;
+                            
+                            return {
+                                ...ghUser,
+                                isInWorkspace: !!memberInWs,
+                                wsRole: memberInWs?.role || null,
+                                wsJoinedAt: memberInWs?.joinedAt || null
+                            };
                         });
 
-                        setAvailableToAdd(availableForAdd);
+                        setAvailableToAdd(enriched);
                     } catch (err) {
-                        console.warn('[PMAddMembers] GitHub collaborators fetch failed', err);
+                        const errMsg = err.response?.data?.error || err.message;
+                        console.warn('[PMAddMembers] GitHub collaborators fetch failed:', errMsg);
                         setGithubCollaborators([]);
                         setAvailableToAdd([]);
                     }
                 }
 
-                // Combine all members for display
-                const allMembers = wsMembersData.map(m => ({
-                    id: m._id,
-                    name: m.fullName || m.email,
-                    login: m.email?.split('@')[0] || '',
-                    email: m.email,
-                    role: m.role || 'collaborator',
-                    avatarUrl: m.avatarUrl || '',
-                    lastActive: 'Workspace Member',
-                    profileUrl: '',
-                    isInWorkspace: true,
-                }));
+                // 4. Populate Local State for the bottom "Collaborators" list
+                // Show GitHub collaborators who have logged into our platform (hasAccount = true / tick mark)
+                const confirmedTeammates = enriched
+                    .filter(u => u.hasAccount)
+                    .map(u => ({
+                        id: u.userId || u.login,
+                        name: u.name || u.login,
+                        login: u.login,
+                        email: u.email || `${u.login}@github.com`,
+                        role: u.wsRole || u.role || 'collaborator',
+                        avatarUrl: u.avatarUrl || '',
+                        lastActive: u.isInWorkspace ? 'Workspace Member' : 'Platform User',
+                        profileUrl: u.profileUrl,
+                        isInWorkspace: u.isInWorkspace,
+                    }));
 
-                setMembers(allMembers);
+                setMembers(confirmedTeammates);
             } catch (err) {
-                console.error('[PMAddMembers] fetch data failed:', err);
-                setError('Could not load workspace. Showing demo data.');
-                setMembers(FALLBACK_MEMBERS);
+                const errMsg = err.response?.data?.error || err.message;
+                console.error('[PMAddMembers] fetch data failed:', errMsg);
+                setError(`Failed to load team data: ${errMsg}`);
+                setMembers([]);
             } finally {
                 setLoading(false);
             }
@@ -149,8 +177,38 @@ const PMAddMembers = () => {
         }
     };
 
-    const handleRemoveMember = (id) => {
-        setMembers(prev => prev.filter(m => m.id !== id));
+    const handleRemoveMember = async (id) => {
+        if (!workspace) return;
+        try {
+            const headers = token ? { Authorization: `Bearer ${token}` } : {};
+            await axios.delete(
+                `${API_BASE_URL}/workspace/${workspace._id}/members/${id}`,
+                { headers, withCredentials: true }
+            );
+
+            setMembers(prev => prev.filter(m => m.id !== id));
+        } catch (err) {
+            const msg = err.response?.data?.error || err.message;
+            setError(`Failed to remove member: ${msg}`);
+        }
+    };
+
+    const handleChangeRole = async (memberId, newRole) => {
+        if (!workspace) return;
+        try {
+            const headers = token ? { Authorization: `Bearer ${token}` } : {};
+            await axios.patch(
+                `${API_BASE_URL}/workspace/${workspace._id}/members/${memberId}/role`,
+                { role: newRole },
+                { headers, withCredentials: true }
+            );
+
+            // Update local state
+            setMembers(prev => prev.map(m => m.id === memberId ? { ...m, role: newRole } : m));
+        } catch (err) {
+            const msg = err.response?.data?.error || err.message;
+            setError(`Failed to change role: ${msg}`);
+        }
     };
 
     const handleRevokeInvite = (id) => {
@@ -163,11 +221,13 @@ const PMAddMembers = () => {
         setIsAdding(prev => ({ ...prev, [githubUser.login]: true }));
         try {
             const headers = token ? { Authorization: `Bearer ${token}` } : {};
-            await axios.post(
+            const res = await axios.post(
                 `${API_BASE_URL}/workspace/${workspace._id}/add-member`,
                 { githubUsername: githubUser.login },
                 { headers, withCredentials: true }
             );
+
+            const assignedRole = res.data?.role || 'collaborator';
 
             // Add to workspace members
             setWorkspaceMembers(prev => [...prev, {
@@ -175,7 +235,7 @@ const PMAddMembers = () => {
                 fullName: githubUser.name || githubUser.login,
                 email: `${githubUser.login}@github.com`,
                 avatarUrl: githubUser.avatarUrl,
-                role: 'collaborator',
+                role: assignedRole,
             }]);
 
             // Remove from available to add
@@ -187,7 +247,7 @@ const PMAddMembers = () => {
                 name: githubUser.name || githubUser.login,
                 login: githubUser.login,
                 email: `${githubUser.login}@github.com`,
-                role: 'collaborator',
+                role: assignedRole,
                 avatarUrl: githubUser.avatarUrl,
                 lastActive: 'Workspace Member',
                 profileUrl: githubUser.profileUrl,
@@ -266,7 +326,8 @@ const PMAddMembers = () => {
                 )}
             </AnimatePresence>
 
-            {/* Invite Card */}
+            {/* Invite Card - PM Only */}
+            {isPM && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="nebula-card p-6 border-primary/20 bg-primary/5">
                 <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
                     <div className="p-1.5 bg-primary/20 rounded-md text-primary"><UserPlus className="w-4 h-4" /></div>
@@ -291,11 +352,8 @@ const PMAddMembers = () => {
                                 onChange={e => setRole(e.target.value)}
                                 className="w-full h-10 pl-10 pr-3 bg-background/50 border border-border/30 rounded-md text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 appearance-none cursor-pointer"
                             >
-                                <option>Developer</option>
-                                <option>Designer</option>
-                                <option>DevOps</option>
-                                <option>Product Owner</option>
-                                <option>QA Engineer</option>
+                                <option value="collaborator">Collaborator</option>
+                                <option value="pm">Project Manager (PM)</option>
                             </select>
                         </div>
                     </div>
@@ -329,16 +387,19 @@ const PMAddMembers = () => {
                     </div>
                 </div>
             </motion.div>
+            )}
 
             {/* Available to Add Section */}
             {availableToAdd.length > 0 && (
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="nebula-card p-6 border-primary/20 bg-secondary/5">
                     <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
                         <div className="p-1.5 bg-secondary/20 rounded-md text-secondary"><Github className="w-4 h-4" /></div>
-                        GitHub Collaborators Ready to Add ({availableToAdd.length})
+                        GitHub Repository Collaborators ({availableToAdd.length})
                     </h3>
-                    <p className="text-xs text-muted-foreground mb-4">These GitHub collaborators already have website accounts. Click to add them to your workspace.</p>
-                    <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground mb-4">
+                        Manage everyone with direct access to your GitHub repository.
+                    </p>
+                    <div className="space-y-4">
                         <AnimatePresence>
                             {availableToAdd.map((ghUser) => (
                                 <motion.div
@@ -346,17 +407,28 @@ const PMAddMembers = () => {
                                     initial={{ opacity: 0, height: 0 }}
                                     animate={{ opacity: 1, height: 'auto' }}
                                     exit={{ opacity: 0, height: 0 }}
-                                    className="nebula-card p-3 flex items-center justify-between group hover:border-primary/30 transition-colors"
+                                    className="nebula-card p-3 flex flex-col md:flex-row items-center justify-between group hover:border-primary/30 transition-colors gap-4"
                                 >
                                     <div className="flex items-center gap-3">
-                                        <Avatar className="w-10 h-10 border-2 border-background">
-                                            {ghUser.avatarUrl && <img src={ghUser.avatarUrl} alt={ghUser.login} />}
-                                            <AvatarFallback className="bg-gradient-to-br from-secondary/20 to-purple-500/20">
-                                                {ghUser.name?.[0]?.toUpperCase() || ghUser.login[0].toUpperCase()}
-                                            </AvatarFallback>
-                                        </Avatar>
+                                        <div className="relative">
+                                            <Avatar className="w-10 h-10 border-2 border-background">
+                                                {ghUser.avatarUrl && <img src={ghUser.avatarUrl} alt={ghUser.login} />}
+                                                <AvatarFallback className="bg-gradient-to-br from-secondary/20 to-purple-500/20">
+                                                    {ghUser.name?.[0]?.toUpperCase() || ghUser.login[0].toUpperCase()}
+                                                </AvatarFallback>
+                                            </Avatar>
+                                            {ghUser.hasAccount && (
+                                                <div className="absolute -top-1 -right-1" title="Has Nebula account">
+                                                    <CheckCircle2 className="w-4 h-4 text-green-500 fill-background" />
+                                                </div>
+                                            )}
+                                        </div>
                                         <div>
-                                            <p className="text-sm font-medium text-foreground">{ghUser.name || ghUser.login}</p>
+                                            <div className="flex items-center gap-2">
+                                                <p className="text-sm font-medium text-foreground">{ghUser.name || ghUser.login}</p>
+                                                {ghUser.isInWorkspace && <Badge className="bg-green-500/10 text-green-500 text-[10px] h-4 py-0 border-none px-1.5">Member</Badge>}
+                                                {ghUser.status === 'pending_github' && <Badge variant="outline" className="text-amber-500 border-amber-500/30 text-[10px] h-4 py-0 px-1.5 border-dashed">Pending on GH</Badge>}
+                                            </div>
                                             <div className="flex items-center gap-2">
                                                 <span className="text-xs text-muted-foreground">{ghUser.role || 'Developer'}</span>
                                                 {ghUser.profileUrl && (
@@ -372,18 +444,48 @@ const PMAddMembers = () => {
                                             </div>
                                         </div>
                                     </div>
-                                    <Button
-                                        onClick={() => handleAddMemberToWorkspace(ghUser)}
-                                        disabled={isAdding[ghUser.login]}
-                                        size="sm"
-                                        className="bg-secondary hover:bg-secondary/90"
-                                    >
-                                        {isAdding[ghUser.login] ? (
-                                            <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Adding…</>
+                                    
+                                    <div className="flex items-center gap-2">
+                                        {ghUser.isInWorkspace ? (
+                                            <Button disabled variant="outline" size="sm" className="opacity-50 h-8 border-green-500/30 text-green-500">
+                                                <Check className="w-3.5 h-3.5 mr-1" /> Already in Team
+                                            </Button>
+                                        ) : ghUser.status === 'pending_github' ? (
+                                            <Button disabled variant="outline" size="sm" className="opacity-50 h-8 border-amber-500/30 text-amber-500">
+                                                <Clock className="w-3.5 h-3.5 mr-1" /> Invited on GH
+                                            </Button>
+                                        ) : ghUser.hasAccount ? (
+                                            isPM ? (
+                                                <Button
+                                                    onClick={() => handleAddMemberToWorkspace(ghUser)}
+                                                    disabled={isAdding[ghUser.login]}
+                                                    size="sm"
+                                                    className="bg-secondary hover:bg-secondary/90 h-8"
+                                                >
+                                                    {isAdding[ghUser.login] ? (
+                                                        <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> Adding…</>
+                                                    ) : (
+                                                        <><UserPlus className="w-3.5 h-3.5 mr-1" /> Add to Team</>
+                                                    )}
+                                                </Button>
+                                            ) : null
                                         ) : (
-                                            <><UserPlus className="w-4 h-4 mr-1" /> Add</>
+                                            isPM ? (
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="border-primary/50 text-primary hover:bg-primary/10 h-8"
+                                                    onClick={() => {
+                                                        setGithubUsername(ghUser.login);
+                                                        setEmail(ghUser.email || '');
+                                                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                                                    }}
+                                                >
+                                                    <Mail className="w-3.5 h-3.5 mr-1" /> Invite via Email
+                                                </Button>
+                                            ) : null
                                         )}
-                                    </Button>
+                                    </div>
                                 </motion.div>
                             ))}
                         </AnimatePresence>
@@ -478,26 +580,43 @@ const PMAddMembers = () => {
                                         </div>
                                     </div>
                                 </div>
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                        <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <MoreVertical className="w-4 h-4" />
-                                        </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                        {member.profileUrl && (
-                                            <DropdownMenuItem onClick={() => window.open(member.profileUrl, '_blank')}>
-                                                View GitHub Profile
+                                {isPM && (
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <MoreVertical className="w-4 h-4" />
+                                            </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                            {member.profileUrl && (
+                                                <DropdownMenuItem onClick={() => window.open(member.profileUrl, '_blank')}>
+                                                    View GitHub Profile
+                                                </DropdownMenuItem>
+                                            )}
+                                            {member.role === 'pm' ? (
+                                                <DropdownMenuItem onClick={() => handleChangeRole(member.id, 'collaborator')}>
+                                                    Demote to Collaborator
+                                                </DropdownMenuItem>
+                                            ) : (
+                                                <DropdownMenuItem onClick={() => handleChangeRole(member.id, 'pm')}>
+                                                    Promote to PM
+                                                </DropdownMenuItem>
+                                            )}
+                                            <DropdownMenuItem className="text-red-400" onClick={() => handleRemoveMember(member.id)}>
+                                                Remove Member
                                             </DropdownMenuItem>
-                                        )}
-                                        <DropdownMenuItem>Change Role</DropdownMenuItem>
-                                        <DropdownMenuItem className="text-red-400" onClick={() => handleRemoveMember(member.id)}>
-                                            Remove Member
-                                        </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                )}
                             </motion.div>
                         ))}
+                        {members.length === 0 && !loading && (
+                            <div className="text-center p-8 border-2 border-dashed border-border/20 rounded-lg text-muted-foreground text-sm bg-primary/2">
+                                <Github className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                                <p>No GitHub collaborators of this repo have <br/> signed into Nebula Flow yet.</p>
+                                <p className="text-[10px] mt-2 opacity-60">Once collaborators log in to the platform, they'll appear here automatically.</p>
+                            </div>
+                        )}
                     </div>
                 </motion.div>
             </div>

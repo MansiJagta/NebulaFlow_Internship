@@ -101,13 +101,13 @@ const DroppableColumn = ({ status, children }) => {
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const JiraPage = () => {
-    const { token } = useAuth();
+    const { token, selectedRepo } = useAuth();
     const [view, setView] = useState('board');
     const [items, setItems] = useState([]);
     const [activeId, setActiveId] = useState(null);
     const [search, setSearch] = useState('');
     const [isCreateOpen, setIsCreateOpen] = useState(false);
-    const [users, setUsers] = useState([]);
+    const [collaborators, setCollaborators] = useState([]);
     const [sprints, setSprints] = useState([]);
     const [workspace, setWorkspace] = useState(null);
 
@@ -139,20 +139,40 @@ const JiraPage = () => {
             const workspaceId = workspaceRes.data?._id;
             setWorkspace(workspaceRes.data || null);
 
-            const [usersRes, issuesRes, sprintsRes] = await Promise.all([
-                axios.get(`${API_BASE_URL}/pm/users${workspaceId ? `?workspaceId=${workspaceId}` : ''}`, { headers: authHeaders, withCredentials: true }),
+            let collabPromise = Promise.resolve({ data: [] });
+            if (selectedRepo && selectedRepo.name) {
+                const owner = selectedRepo.owner || (selectedRepo.fullName?.includes('/') ? selectedRepo.fullName.split('/')[0] : '');
+                collabPromise = axios.get(
+                    `${API_BASE_URL}/github/repo/collaborators?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(selectedRepo.name)}`,
+                    { headers: authHeaders, withCredentials: true }
+                );
+            }
+
+            const [collabRes, issuesRes, sprintsRes] = await Promise.all([
+                collabPromise,
                 axios.get(`${API_BASE_URL}/pm/issues${workspaceId ? `?workspaceId=${workspaceId}` : ''}`, { headers: authHeaders, withCredentials: true }),
                 axios.get(`${API_BASE_URL}/pm/sprints`, { headers: authHeaders, withCredentials: true }),
             ]);
 
-            setUsers(usersRes.data);
+            // Filter strict GitHub collaborators with accounts
+            const activeUniqueMembers = (Array.isArray(collabRes.data) ? collabRes.data : [])
+                .filter((entry) => entry.hasAccount && entry.userId)
+                .map((entry) => ({
+                    _id: entry.userId,
+                    fullName: entry.name || entry.login,
+                    email: entry.email || `${entry.login}@github.com`,
+                    avatarUrl: entry.avatarUrl || '',
+                    role: entry.role || 'collaborator'
+                }));
+
+            setCollaborators(activeUniqueMembers);
             setItems(issuesRes.data);
             setSprints(sprintsRes.data);
 
-            if (usersRes.data.length && !form.assigneeUserId) {
-                setForm(prev => ({ ...prev, assigneeUserId: usersRes.data[0]._id }));
+            if (activeUniqueMembers.length > 0 && (!form.assigneeUserId || form.assigneeUserId === 'none')) {
+                setForm(prev => ({ ...prev, assigneeUserId: activeUniqueMembers[0]._id }));
             }
-            if (sprintsRes.data.length && (form.sprintId === 'none' || !form.sprintId)) {
+            if (sprintsRes.data.length > 0 && (form.sprintId === 'none' || !form.sprintId)) {
                 const active = sprintsRes.data.find(s => s.isActive) || sprintsRes.data[0];
                 if (active) setForm(prev => ({ ...prev, sprintId: active._id }));
             }
@@ -166,9 +186,9 @@ const JiraPage = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const collaborators = useMemo(() => {
-        return users.filter(u => u.role === 'collaborator' || u.role === 'pm');
-    }, [users]);
+    const filteredCollaborators = useMemo(() => {
+        return collaborators;
+    }, [collaborators]);
 
     const activeSprint = useMemo(() => {
         return sprints.find(s => s.isActive) || sprints[0] || null;
@@ -360,8 +380,8 @@ const JiraPage = () => {
                                                     <SelectValue placeholder="Select" />
                                                 </SelectTrigger>
                                                 <SelectContent>
-                                                    {collaborators.length > 0 ? (
-                                                        collaborators.map(user => (
+                                                    {filteredCollaborators.length > 0 ? (
+                                                        filteredCollaborators.map(user => (
                                                             <SelectItem key={user._id} value={user._id}>
                                                                 {user.fullName}
                                                             </SelectItem>
@@ -519,7 +539,7 @@ const JiraPage = () => {
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="all">All Assignees</SelectItem>
-                                        {collaborators.map(u => <SelectItem key={u._id} value={u._id}>{u.fullName}</SelectItem>)}
+                                        {filteredCollaborators.map(u => <SelectItem key={u._id} value={u._id}>{u.fullName}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
 
@@ -627,7 +647,7 @@ const JiraPage = () => {
 
                 {view === 'calendar' && (
                     <div className="h-full pr-2 pb-4">
-                        <CalendarView issues={filteredItems} />
+                        <CalendarView issues={filteredItems} sprints={sprints} users={collaborators} />
                     </div>
                 )}
 

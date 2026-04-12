@@ -1,11 +1,14 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
+import { useCollaborators } from '@/hooks/useCollaborators';
 import {
     LayoutDashboard, ListChecks, MessageSquare, GitBranch,
-    BarChart3, UserPlus, LogOut, Rocket, ChevronLeft, ArrowLeft
+    BarChart3, UserPlus, LogOut, Rocket, ChevronLeft, ArrowLeft,
+    Users
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 const pmLinks = [
     { to: '/pm/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -26,7 +29,7 @@ const collabLinks = [
 ];
 
 const Sidebar = ({ collapsed: propCollapsed, setCollapsed: propSetCollapsed }) => {
-    const { role, logout, user } = useAuth();
+    const { role, logout, user, selectedRepo } = useAuth();
     const navigate = useNavigate();
     const [localCollapsed, setLocalCollapsed] = useState(false);
 
@@ -34,6 +37,9 @@ const Sidebar = ({ collapsed: propCollapsed, setCollapsed: propSetCollapsed }) =
     const setCollapsed = propSetCollapsed !== undefined ? propSetCollapsed : setLocalCollapsed;
 
     const links = role === 'pm' ? pmLinks : collabLinks;
+    
+    // Scoped members fetch
+    const { collaborators } = useCollaborators(selectedRepo?.workspaceId);
 
     const handleLogout = () => {
         logout();
@@ -82,7 +88,7 @@ const Sidebar = ({ collapsed: propCollapsed, setCollapsed: propSetCollapsed }) =
             </div>
 
             {/* Nav links */}
-            <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
+            <nav className="flex-1 p-2 space-y-1 overflow-y-auto custom-scrollbar">
                 {links.map((link, i) => (
                     <motion.div
                         key={link.to}
@@ -104,6 +110,37 @@ const Sidebar = ({ collapsed: propCollapsed, setCollapsed: propSetCollapsed }) =
                         </NavLink>
                     </motion.div>
                 ))}
+
+                {/* Scoped Team Section */}
+                {!collapsed && collaborators.length > 0 && (
+                    <div className="mt-8 px-3">
+                        <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
+                            <Users className="w-3 h-3" /> Team Members
+                        </h3>
+                        <div className="space-y-2">
+                            {collaborators.map((member, idx) => (
+                                <motion.div 
+                                    key={member._id} 
+                                    initial={{ opacity: 0, x: -10 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    transition={{ delay: idx * 0.1 }}
+                                    className="flex items-center gap-2 group cursor-pointer"
+                                >
+                                    <div className="relative">
+                                        <Avatar className="w-6 h-6 border border-sidebar-border">
+                                            <AvatarImage src={member.avatarUrl} />
+                                            <AvatarFallback className="text-[8px] bg-primary/10 text-primary uppercase">{member.fullName?.[0] || '?'}</AvatarFallback>
+                                        </Avatar>
+                                        <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-green-500 border border-sidebar rounded-full shadow-sm"></span>
+                                    </div>
+                                    <span className="text-xs text-sidebar-foreground group-hover:text-foreground truncate transition-colors">
+                                        {member.fullName}
+                                    </span>
+                                </motion.div>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </nav>
 
             {/* User + Logout */}

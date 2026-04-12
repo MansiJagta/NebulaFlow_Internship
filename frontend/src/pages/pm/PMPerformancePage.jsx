@@ -7,7 +7,7 @@ import {
 } from 'recharts';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { TrendingUp, AlertCircle, Zap, Users, Loader2 } from 'lucide-react';
+import { TrendingUp, AlertCircle, Zap, Users, Loader2, Slack, Trello } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
 import axios from 'axios';
@@ -41,7 +41,10 @@ const PerformancePage = () => {
                 setLoading(false);
             }
         };
+
         fetchAll();
+        const interval = setInterval(fetchAll, 30000); // Poll every 30s
+        return () => clearInterval(interval);
     }, [API_BASE_URL]);
 
     if (loading) {
@@ -176,6 +179,28 @@ const PerformancePage = () => {
                                 </div>
                             </div>
                             <span className="text-xl font-black text-accent">{data.avgPrTurnaround} <span className="text-[10px] font-normal text-muted-foreground uppercase ml-1">hrs</span></span>
+                        </div>
+
+                        <div className="flex justify-between items-center p-3 rounded-lg bg-muted/10 border border-border/20">
+                            <div className="flex items-center gap-3">
+                                <div className="bg-purple-500/20 p-2 rounded-md"><Slack className="w-4 h-4 text-purple-400" /></div>
+                                <div>
+                                    <p className="text-xs font-bold text-foreground">Slack Activity</p>
+                                    <p className="text-[10px] text-muted-foreground">Messages in 7 days</p>
+                                </div>
+                            </div>
+                            <span className="text-xl font-black text-purple-400">{data.slackActivity || 0} <span className="text-[10px] font-normal text-muted-foreground uppercase ml-1">msgs</span></span>
+                        </div>
+
+                        <div className="flex justify-between items-center p-3 rounded-lg bg-muted/10 border border-border/20">
+                            <div className="flex items-center gap-3">
+                                <div className="bg-blue-500/20 p-2 rounded-md"><Trello className="w-4 h-4 text-blue-500" /></div>
+                                <div>
+                                    <p className="text-xs font-bold text-foreground">Jira Progress</p>
+                                    <p className="text-[10px] text-muted-foreground">Done / Total Issues</p>
+                                </div>
+                            </div>
+                            <span className="text-xl font-black text-blue-500">{data.jiraStats?.done || 0}/{data.jiraStats?.total || 0}</span>
                         </div>
 
                         <div className="grid grid-cols-2 gap-4 mt-2">

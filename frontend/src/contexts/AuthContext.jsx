@@ -20,6 +20,7 @@ export const AuthProvider = ({ children }) => {
         const saved = localStorage.getItem('nebula-selected-repo');
         return saved ? JSON.parse(saved) : null;
     });
+    const [workspace, setWorkspace] = useState(null);
 
     const syncUser = useCallback((apiUser, nextToken) => {
         if (!apiUser) {
@@ -164,6 +165,42 @@ export const AuthProvider = ({ children }) => {
         load();
     }, [syncUser, token]);
 
+    // Fetch workspace whenever user or selectedRepo changes
+    useEffect(() => {
+        const fetchWorkspace = async () => {
+            if (!user) { setWorkspace(null); return; }
+            try {
+                const headers = token ? { Authorization: `Bearer ${token}` } : {};
+                const res = await fetch(`${API_BASE_URL}/workspace/me`, {
+                    credentials: 'include',
+                    headers,
+                });
+                if (!res.ok) return;
+                const ws = await res.json();
+                setWorkspace(ws);
+
+                // Derive effective role from workspace membership
+                if (ws?.members) {
+                    const me = ws.members.find(m =>
+                        (m.userId?._id === user.id) || (m.userId === user.id) || (m._id === user.id)
+                    );
+                    if (me?.role && me.role !== user.role) {
+                        // Update user role to match workspace role
+                        setUser(prev => {
+                            if (!prev) return prev;
+                            const updated = { ...prev, role: me.role };
+                            localStorage.setItem('nebula-user', JSON.stringify(updated));
+                            return updated;
+                        });
+                    }
+                }
+            } catch {
+                // ignore workspace load failures
+            }
+        };
+        fetchWorkspace();
+    }, [user?.id, selectedRepo, token]);
+
     return (
         <AuthContext.Provider value={{
             user,
@@ -171,6 +208,7 @@ export const AuthProvider = ({ children }) => {
             isAuthenticated: !!user,
             token,
             selectedRepo,
+            workspace,
             setRepo,
             login,
             register,
