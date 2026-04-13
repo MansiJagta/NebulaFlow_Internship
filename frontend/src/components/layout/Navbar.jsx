@@ -3,6 +3,7 @@ import { Bell, Search, Settings, LogOut, LayoutDashboard, ChevronDown } from 'lu
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import RoleBadge from '@/components/common/RoleBadge';
 import {
     DropdownMenu,
     DropdownMenuTrigger,
@@ -54,11 +55,14 @@ const Navbar = () => {
                             <ChevronDown className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
                         </button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="min-w-[200px]">
+                    <DropdownMenuContent align="end" className="min-w-[240px]">
                         <DropdownMenuLabel>
-                            <div className="flex flex-col">
+                            <div className="flex flex-col gap-2">
                                 <span className="text-sm font-semibold">{user?.name || 'User'}</span>
-                                <span className="text-xs text-muted-foreground">{role || 'collaborator'}</span>
+                                <span className="text-xs text-muted-foreground">{user?.email}</span>
+                                <div className="pt-1">
+                                    <RoleBadge role={role} size="sm" />
+                                </div>
                             </div>
                         </DropdownMenuLabel>
                         <DropdownMenuSeparator />

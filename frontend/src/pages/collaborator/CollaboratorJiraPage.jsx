@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react';
-import axios from 'axios';
 import { motion } from 'framer-motion';
-import { useAuth } from '@/contexts/AuthContext';
 import { statusColumns, statusLabels, priorityColors, typeIcons } from '@/data/jiraMockData';
 import { List, LayoutGrid, Calendar as CalendarIcon, Search, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -13,6 +11,8 @@ import { sortableKeyboardCoordinates, useSortable, SortableContext, verticalList
 import { CSS } from '@dnd-kit/utilities';
 import { DonutChart } from '@/components/common/Charts';
 import CalendarView from '@/components/common/CalendarView';
+import { useAuth } from '@/contexts/AuthContext';
+import { useCollaboratorWorkspaceLive } from '@/hooks/useCollaboratorWorkspaceLive';
 
 // --- DND Components ---
 const SortableTicket = ({ ticket }) => {
@@ -56,50 +56,19 @@ const JiraCard = ({ ticket, isOverlay }) => (
     </div>
 );
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-
 const CollaboratorJiraPage = () => {
-    const { user, token } = useAuth();
+    const { user } = useAuth();
     const [view, setView] = useState('list'); // Default to list for focus
     const [allIssues, setAllIssues] = useState([]); // Store all issues
     const [taskScope, setTaskScope] = useState('my'); // Default to 'my' for collaborator
     const [items, setItems] = useState([]);
     const [activeId, setActiveId] = useState(null);
     const [search, setSearch] = useState('');
-    const [workspace, setWorkspace] = useState(null);
+    const { workspace, issues: liveIssues, loading } = useCollaboratorWorkspaceLive();
 
     useEffect(() => {
-        const load = async () => {
-            try {
-                const headers = token ? { Authorization: `Bearer ${token}` } : {};
-
-                // Load workspace first
-                const wsRes = await axios.get(`${API_BASE_URL}/workspace/me`, {
-                    headers,
-                    withCredentials: true,
-                });
-                setWorkspace(wsRes.data);
-
-                const res = await axios.get(`${API_BASE_URL}/pm/issues`, {
-                    headers,
-                    withCredentials: true,
-                });
-                setAllIssues(res.data);
-
-                // Initial set based on 'my'
-                const assigned = res.data.filter(issue =>
-                    issue.assigneeUser && user?.id
-                        ? String(issue.assigneeUser._id) === String(user.id)
-                        : false
-                );
-                setItems(taskScope === 'my' ? assigned : res.data);
-            } catch (err) {
-                console.error('[CollaboratorJiraPage] failed to load issues', err);
-            }
-        };
-
-        if (user) load();
-    }, [user, token]);
+        setAllIssues(liveIssues);
+    }, [liveIssues]);
 
     useEffect(() => {
         if (taskScope === 'my') {
@@ -148,6 +117,11 @@ const CollaboratorJiraPage = () => {
 
     return (
         <div className="flex flex-col h-full space-y-4">
+            {loading && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span className="w-2 h-2 rounded-full bg-primary animate-pulse" /> Syncing workspace issues…
+                </div>
+            )}
             <div className="flex flex-col gap-4 pb-4 border-b border-border/20">
                 <div className="flex items-center justify-between">
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>

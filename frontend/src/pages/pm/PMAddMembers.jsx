@@ -69,6 +69,14 @@ const PMAddMembers = () => {
                 // ALWAYS prefer selectedRepo since that's what the user actively chose
                 const owner = selectedRepo?.owner || currentWs?.githubConfig?.repoOwner;
                 const repo = selectedRepo?.name || selectedRepo?.fullName?.split('/')[1] || currentWs?.githubConfig?.repoName;
+                const ownerLogin = (owner || '').toLowerCase();
+
+                const resolveWorkspaceRole = (ghUser, wsRole) => {
+                    const ghLogin = (ghUser?.login || '').toLowerCase();
+                    if (ownerLogin && ghLogin && ghLogin === ownerLogin) return 'pm';
+                    if (wsRole) return wsRole;
+                    return 'collaborator';
+                };
 
                 console.log('[PMAddMembers] Fetching for:', { owner, repo, selectedRepo });
 
@@ -93,11 +101,12 @@ const PMAddMembers = () => {
                                 (wsMember.email?.toLowerCase() === ghUser.email?.toLowerCase()) ||
                                 (wsMember.userId?._id?.toString() === ghUser.userId?.toString())
                             );
+                            const effectiveWsRole = resolveWorkspaceRole(ghUser, memberInWs?.role || null);
                             
                             return {
                                 ...ghUser,
                                 isInWorkspace: !!memberInWs,
-                                wsRole: memberInWs?.role || null,
+                                wsRole: effectiveWsRole,
                                 wsJoinedAt: memberInWs?.joinedAt || null
                             };
                         });
@@ -120,7 +129,7 @@ const PMAddMembers = () => {
                         name: u.name || u.login,
                         login: u.login,
                         email: u.email || `${u.login}@github.com`,
-                        role: u.wsRole || u.role || 'collaborator',
+                        role: resolveWorkspaceRole(u, u.wsRole || null),
                         avatarUrl: u.avatarUrl || '',
                         lastActive: u.isInWorkspace ? 'Workspace Member' : 'Platform User',
                         profileUrl: u.profileUrl,

@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import axios from 'axios';
 
 const CollaboratorPerformancePage = () => {
-    const { API_BASE_URL } = useAuth();
+    const { API_BASE_URL, selectedRepo } = useAuth();
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [workspace, setWorkspace] = useState(null);
@@ -22,9 +22,16 @@ const CollaboratorPerformancePage = () => {
         const fetchAll = async () => {
             try {
                 const wsRes = await axios.get(`${API_BASE_URL}/workspace/me`, { withCredentials: true });
-                setWorkspace(wsRes.data);
+                const nextWorkspace = wsRes.data;
+                const workspaceId = selectedRepo?.workspaceId || nextWorkspace?._id;
+                setWorkspace(nextWorkspace);
 
-                const perfRes = await axios.get(`${API_BASE_URL}/performance/${wsRes.data._id}`, { withCredentials: true });
+                if (!workspaceId) {
+                    setData(null);
+                    return;
+                }
+
+                const perfRes = await axios.get(`${API_BASE_URL}/performance/${workspaceId}`, { withCredentials: true });
                 setData(perfRes.data);
             } catch (err) {
                 console.error('[Performance] Fetch failed:', err);
@@ -36,7 +43,7 @@ const CollaboratorPerformancePage = () => {
         fetchAll();
         const interval = setInterval(fetchAll, 30000);
         return () => clearInterval(interval);
-    }, [API_BASE_URL]);
+    }, [API_BASE_URL, selectedRepo?.workspaceId]);
 
     if (loading) {
         return (

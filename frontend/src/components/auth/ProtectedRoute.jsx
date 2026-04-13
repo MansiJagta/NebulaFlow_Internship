@@ -2,7 +2,9 @@ import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 
 const ProtectedRoute = ({ children, requiredRole }) => {
-    const { isAuthenticated, role } = useAuth();
+    const { isAuthenticated, role, authReady } = useAuth();
+
+    if (!authReady) return null;
 
     if (!isAuthenticated) return <Navigate to="/login" replace />;
     // If role is not set yet, keep the user on auth-connected flows

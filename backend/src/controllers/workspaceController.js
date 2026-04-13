@@ -246,24 +246,37 @@ exports.getMyWorkspace = async (req, res) => {
     const userId = req.user?._id || req.user?.id;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
+    const userIdStr = userId.toString();
     const workspace = await Workspace.findOne({ 'members.userId': userId })
       .populate('members.userId', 'fullName email avatarUrl role lastSeenAt')
       .populate('ownerId', 'fullName email');
 
     if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
 
+    // Find current user's membership and extract their workspace role
+    let currentUserRole = null;
     const uniqueMembersMap = new Map();
+    
     workspace.members.forEach(m => {
       if (m.userId && !uniqueMembersMap.has(m.userId._id.toString())) {
+        const memberRole = m.role || 'collaborator';
+        
+        // Check if this is the current user
+        if (m.userId._id.toString() === userIdStr) {
+          currentUserRole = memberRole;
+        }
+        
         uniqueMembersMap.set(m.userId._id.toString(), {
           _id: m.userId._id,
           fullName: m.userId.fullName,
           email: m.userId.email,
           avatarUrl: m.userId.avatarUrl,
-          role: m.role || 'collaborator'
+          role: memberRole
         });
       }
     });
+
+    console.log(`[Workspace] User ${userIdStr} workspace role: ${currentUserRole}`);
 
     res.json({
       _id: workspace._id,
@@ -272,8 +285,10 @@ exports.getMyWorkspace = async (req, res) => {
       owner: workspace.ownerId,
       githubConfig: workspace.githubConfig || {},
       members: Array.from(uniqueMembersMap.values()),
+      currentUserRole: currentUserRole  // <-- Added explicit current user role
     });
   } catch (err) {
+    console.error('[Workspace] getMyWorkspace error:', err);
     res.status(500).json({ error: 'Failed to load workspace' });
   }
 };

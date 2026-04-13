@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import RoleBadge from '@/components/common/RoleBadge';
+import CollaboratorsSection from '@/components/layout/CollaboratorsSection';
 
 const pmLinks = [
     { to: '/pm/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -36,10 +38,22 @@ const Sidebar = ({ collapsed: propCollapsed, setCollapsed: propSetCollapsed }) =
     const collapsed = propCollapsed !== undefined ? propCollapsed : localCollapsed;
     const setCollapsed = propSetCollapsed !== undefined ? propSetCollapsed : setLocalCollapsed;
 
-    const links = role === 'pm' ? pmLinks : collabLinks;
-    
     // Scoped members fetch
     const { collaborators } = useCollaborators(selectedRepo?.workspaceId);
+    const collaboratorRoleForCurrentUser = useMemo(() => {
+        if (!user || !Array.isArray(collaborators)) return null;
+        const matched = collaborators.find((member) => {
+            const memberId = String(member?._id || '');
+            const userId = String(user?.id || '');
+            const memberEmail = String(member?.email || '').toLowerCase();
+            const userEmail = String(user?.email || '').toLowerCase();
+            return (memberId && userId && memberId === userId) || (memberEmail && userEmail && memberEmail === userEmail);
+        });
+        return matched?.role || null;
+    }, [collaborators, user]);
+
+    const displayRole = collaboratorRoleForCurrentUser || role;
+    const links = displayRole === 'pm' ? pmLinks : collabLinks;
 
     const handleLogout = () => {
         logout();
@@ -111,45 +125,32 @@ const Sidebar = ({ collapsed: propCollapsed, setCollapsed: propSetCollapsed }) =
                     </motion.div>
                 ))}
 
-                {/* Scoped Team Section */}
-                {!collapsed && collaborators.length > 0 && (
-                    <div className="mt-8 px-3">
-                        <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
-                            <Users className="w-3 h-3" /> Team Members
-                        </h3>
-                        <div className="space-y-2">
-                            {collaborators.map((member, idx) => (
-                                <motion.div 
-                                    key={member._id} 
-                                    initial={{ opacity: 0, x: -10 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    transition={{ delay: idx * 0.1 }}
-                                    className="flex items-center gap-2 group cursor-pointer"
-                                >
-                                    <div className="relative">
-                                        <Avatar className="w-6 h-6 border border-sidebar-border">
-                                            <AvatarImage src={member.avatarUrl} />
-                                            <AvatarFallback className="text-[8px] bg-primary/10 text-primary uppercase">{member.fullName?.[0] || '?'}</AvatarFallback>
-                                        </Avatar>
-                                        <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-green-500 border border-sidebar rounded-full shadow-sm"></span>
-                                    </div>
-                                    <span className="text-xs text-sidebar-foreground group-hover:text-foreground truncate transition-colors">
-                                        {member.fullName}
-                                    </span>
-                                </motion.div>
-                            ))}
-                        </div>
-                    </div>
-                )}
+                {/* Collaborators Section - Now includes current user and team members with role badges */}
+                <CollaboratorsSection 
+                    currentUser={user ? { ...user, role: displayRole } : null}
+                    collaborators={collaborators} 
+                    collapsed={collapsed}
+                />
             </nav>
 
             {/* User + Logout */}
-            <div className="p-3 border-t border-sidebar-border space-y-2">
+            <div className="p-3 border-t border-sidebar-border space-y-3">
                 {!collapsed && user && (
-                    <div className="px-2 py-1">
-                        <p className="text-xs text-muted-foreground truncate">{user.email}</p>
-                        <p className="text-xs text-primary capitalize">{role}</p>
-                    </div>
+                    <motion.div 
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="px-2.5 py-2 rounded-lg bg-sidebar-accent/30 border border-sidebar-accent/50"
+                    >
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="flex-1">
+                                <p className="text-xs font-semibold text-foreground truncate">{user.name || user.email}</p>
+                                <p className="text-[10px] text-muted-foreground truncate">{user.email}</p>
+                            </div>
+                        </div>
+                        <div className="flex justify-start">
+                            <RoleBadge role={displayRole} size="sm" className="mt-1" />
+                        </div>
+                    </motion.div>
                 )}
                 <button
                     onClick={handleLogout}

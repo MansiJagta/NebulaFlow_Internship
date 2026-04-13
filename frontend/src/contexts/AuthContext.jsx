@@ -15,12 +15,14 @@ export const AuthProvider = ({ children }) => {
         const saved = localStorage.getItem('nebula-user');
         return saved ? JSON.parse(saved) : null;
     });
+    const [authReady, setAuthReady] = useState(false);
     const [token, setToken] = useState(() => localStorage.getItem('nebula-token'));
     const [selectedRepo, setSelectedRepoState] = useState(() => {
         const saved = localStorage.getItem('nebula-selected-repo');
         return saved ? JSON.parse(saved) : null;
     });
     const [workspace, setWorkspace] = useState(null);
+    const effectiveRole = selectedRepo?.workspaceId ? (workspace?.currentUserRole || null) : null;
 
     const syncUser = useCallback((apiUser, nextToken) => {
         if (!apiUser) {
@@ -149,63 +151,78 @@ export const AuthProvider = ({ children }) => {
                     credentials: 'include',
                     headers,
                 });
-                if (!res.ok) return;
+                if (!res.ok) {
+                    // If server rejects auth, clear stale local user state.
+                    syncUser(null, null);
+                    return;
+                }
                 const data = await res.json();
                 if (data.user) {
                     // keep existing token unless backend returns a new one
                     syncUser(data.user, null);
-                } else if (!data.user && token) {
-                    // token is no longer valid
+                } else {
+                    // Server says unauthenticated; clear stale local state.
                     syncUser(null, null);
                 }
             } catch {
-                // ignore initial load failures
+                // Keep local state on transient network failures.
+            } finally {
+                setAuthReady(true);
             }
         };
         load();
     }, [syncUser, token]);
 
-    // Fetch workspace whenever user or selectedRepo changes
+    // Fetch role strictly from the selected workspace.
     useEffect(() => {
-        const fetchWorkspace = async () => {
-            if (!user) { setWorkspace(null); return; }
+        const fetchSelectedWorkspaceRole = async () => {
+            if (!user || !selectedRepo?.workspaceId) {
+                setWorkspace(null);
+                return;
+            }
+
             try {
                 const headers = token ? { Authorization: `Bearer ${token}` } : {};
-                const res = await fetch(`${API_BASE_URL}/workspace/me`, {
+                const res = await fetch(`${API_BASE_URL}/workspace/${selectedRepo.workspaceId}/members`, {
                     credentials: 'include',
                     headers,
                 });
-                if (!res.ok) return;
-                const ws = await res.json();
-                setWorkspace(ws);
 
-                // Derive effective role from workspace membership
-                if (ws?.members) {
-                    const me = ws.members.find(m =>
-                        (m.userId?._id === user.id) || (m.userId === user.id) || (m._id === user.id)
-                    );
-                    if (me?.role && me.role !== user.role) {
-                        // Update user role to match workspace role
-                        setUser(prev => {
-                            if (!prev) return prev;
-                            const updated = { ...prev, role: me.role };
-                            localStorage.setItem('nebula-user', JSON.stringify(updated));
-                            return updated;
-                        });
-                    }
+                if (!res.ok) {
+                    setWorkspace(null);
+                    return;
                 }
+
+                const payload = await res.json();
+                const members = Array.isArray(payload) ? payload : (payload?.members || []);
+                const userId = String(user.id || '');
+                const userEmail = String(user.email || '').toLowerCase();
+
+                const me = members.find((member) => {
+                    const memberId = String(member?._id || '');
+                    const memberEmail = String(member?.email || '').toLowerCase();
+                    return (memberId && userId && memberId === userId) || (memberEmail && userEmail && memberEmail === userEmail);
+                });
+
+                setWorkspace({
+                    _id: selectedRepo.workspaceId,
+                    members,
+                    currentUserRole: me?.role || null,
+                });
             } catch {
-                // ignore workspace load failures
+                setWorkspace(null);
             }
         };
-        fetchWorkspace();
-    }, [user?.id, selectedRepo, token]);
+
+        fetchSelectedWorkspaceRole();
+    }, [user?.id, user?.email, selectedRepo?.workspaceId, token]);
 
     return (
         <AuthContext.Provider value={{
             user,
-            role: user?.role ?? null,
+            role: effectiveRole,
             isAuthenticated: !!user,
+            authReady,
             token,
             selectedRepo,
             workspace,

@@ -161,9 +161,11 @@ const RepositorySelection = () => {
                                         <button className="flex items-center gap-3 focus:outline-none">
                                             <div className="text-right hidden md:block">
                                                 <div className="text-sm font-medium text-white">{user?.name || "User"}</div>
-                                                <div className="text-xs text-white/50">
-                                                    {role || "collaborator"}
-                                                </div>
+                                                {role && (
+                                                    <div className="text-xs text-white/50">
+                                                        {role}
+                                                    </div>
+                                                )}
                                             </div>
                                             <Avatar className="h-10 w-10 border-2 border-white/10 hover:border-nebula-cyan/50 transition-colors">
                                                 <AvatarImage src={user?.avatar} />
@@ -175,7 +177,7 @@ const RepositorySelection = () => {
                                         <DropdownMenuLabel>
                                             <div className="flex flex-col">
                                                 <span className="text-sm font-semibold">{user?.name || "User"}</span>
-                                                <span className="text-xs text-muted-foreground">{role || "collaborator"}</span>
+                                                {role && <span className="text-xs text-muted-foreground">{role}</span>}
                                             </div>
                                         </DropdownMenuLabel>
                                         <DropdownMenuSeparator />

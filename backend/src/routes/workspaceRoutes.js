@@ -1,26 +1,3 @@
-// const express = require('express');
-// const { getMyWorkspace, createWorkspace, addMemberToWorkspace, updateMemberRole, removeMember } = require('../controllers/workspaceController');
-// const { requireAuth } = require('../middleware/auth');
-// const { isPM } = require('../middleware/isPM');
-
-// const router = express.Router();
-
-// router.use(requireAuth);
-
-// router.get('/me', getMyWorkspace);
-// router.post('/', createWorkspace);
-// router.post('/:workspaceId/add-member', isPM, addMemberToWorkspace);
-// router.patch('/:workspaceId/members/:memberId/role', isPM, updateMemberRole);
-// router.delete('/:workspaceId/members/:memberId', isPM, removeMember);
-
-// module.exports = router;
-
-
-
-
-
-
-
 const express = require('express');
 const {
     getMyWorkspace,

@@ -12,6 +12,7 @@ import Login from "@/pages/Login";
 import Signup from "@/pages/Signup";
 import AcceptInvite from "@/pages/AcceptInvite";
 import RepositorySelection from "@/pages/RepositorySelection";
+import SettingsPage from "@/pages/SettingsPage";
 import NotFound from "@/pages/NotFound";
 
 import PMDashboard from "@/pages/pm/PMDashboard";
@@ -44,6 +45,11 @@ const App = () => (
                         <Route path="/signup" element={<Signup />} />
                         <Route path="/accept-invite" element={<AcceptInvite />} />
                         <Route path="/repository-selection" element={<RepositorySelection />} />
+
+                        {/* Settings Page - Accessible to both roles */}
+                        <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+                            <Route path="/settings" element={<SettingsPage />} />
+                        </Route>
 
                         {/* PM Routes */}
                         <Route element={<ProtectedRoute requiredRole="pm"><AppLayout /></ProtectedRoute>}>
