@@ -31,7 +31,13 @@ const CollaboratorPerformancePage = () => {
                     return;
                 }
 
-                const perfRes = await axios.get(`${API_BASE_URL}/performance/${workspaceId}`, { withCredentials: true });
+                // Build URL with selected repo parameters if available
+                let perfUrl = `${API_BASE_URL}/performance/${workspaceId}`;
+                if (selectedRepo?.owner && selectedRepo?.name) {
+                    perfUrl += `?repoOwner=${encodeURIComponent(selectedRepo.owner)}&repoName=${encodeURIComponent(selectedRepo.name)}`;
+                }
+
+                const perfRes = await axios.get(perfUrl, { withCredentials: true });
                 setData(perfRes.data);
             } catch (err) {
                 console.error('[Performance] Fetch failed:', err);
@@ -43,7 +49,7 @@ const CollaboratorPerformancePage = () => {
         fetchAll();
         const interval = setInterval(fetchAll, 30000);
         return () => clearInterval(interval);
-    }, [API_BASE_URL, selectedRepo?.workspaceId]);
+    }, [API_BASE_URL, selectedRepo]);
 
     if (loading) {
         return (

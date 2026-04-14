@@ -7,31 +7,38 @@ async function requireAuth(req, res, next) {
   try {
     let user = null;
     const authHeader = req.headers.authorization || '';
-    console.log('[auth] Checking auth - hasJWT:', !!authHeader, 'hasSession:', !!req.session?.userId);
+    console.log('[auth] ========== AUTH CHECK ==========');
+    console.log('[auth] Request path:', req.path);
+    console.log('[auth] Has Authorization header:', !!authHeader);
+    console.log('[auth] Authorization header:', authHeader ? authHeader.substring(0, 20) + '...' : 'MISSING');
+    console.log('[auth] Has session:', !!req.session?.userId);
     
     if (authHeader.startsWith('Bearer ')) {
       const token = authHeader.slice(7);
       try {
         const payload = jwt.verify(token, JWT_SECRET);
         user = await User.findById(payload.sub);
-        console.log('[auth] JWT auth successful for user:', payload.sub);
+        console.log('[auth] ✅ JWT auth successful for user:', payload.sub);
       } catch (err) {
-        console.log('[auth] JWT verification failed:', err.message);
+        console.log('[auth] ❌ JWT verification failed:', err.message);
       }
     }
 
     // Fallback to session (OAuth)
     if (!user && req.session && req.session.userId) {
       user = await User.findById(req.session.userId);
-      console.log('[auth] Session auth for user:', req.session.userId, 'found:', !!user);
+      console.log('[auth] ✅ Session auth for user:', req.session.userId, 'found:', !!user);
     }
 
     if (!user) {
-      console.log('[auth] Authentication failed - no valid token or session');
-      console.log('[auth] Session data:', req.session);
-      return res.status(401).json({ error: 'Unauthorized' });
+      console.log('[auth] ❌ Authentication failed - no valid token or session');
+      console.log('[auth] Available auth methods: JWT=' + !!authHeader + ', Session=' + !!(req.session?.userId));
+      console.log('[auth] ========== END AUTH CHECK ==========');
+      return res.status(401).json({ error: 'Unauthorized - no valid token or session' });
     }
 
+    console.log('[auth] ✅ Auth passed for user:', user._id);
+    console.log('[auth] ========== END AUTH CHECK ==========');
     req.user = user;
     next();
   } catch (err) {

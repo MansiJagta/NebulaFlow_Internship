@@ -52,19 +52,14 @@ module.exports = async (req, res, next) => {
       return res.status(404).json({ message: "Channel not found" });
     }
 
-    // Public channel → allow
-    if (!channel.isPrivate) {
-      req.channel = channel;
-      return next();
-    }
-
-    // Private channel → check membership
+    // ✅ NEW ACCESS CONTROL: Check membership for ALL channels (public AND private)
+    // Users can only access channels they are members of
     const isMember = channel.members.some(
       (member) => member.toString() === userId.toString()
     );
 
     if (!isMember) {
-      return res.status(403).json({ message: "Access denied" });
+      return res.status(403).json({ message: "Access denied. You are not a member of this channel." });
     }
 
     req.channel = channel;

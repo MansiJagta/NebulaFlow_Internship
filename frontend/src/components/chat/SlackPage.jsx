@@ -3,6 +3,8 @@ import axios from 'axios';
 import ChannelList from '@/components/chat/ChannelList';
 import ChatWindow from '@/components/chat/ChatWindow';
 import MessageInput from '@/components/chat/MessageInput';
+import ChatHeader from '@/components/chat/ChatHeader';
+import CreateChannelModal from '@/components/chat/CreateChannelModal';
 import { useAuth } from '@/contexts/AuthContext';
 import { disconnectSocket, initializeSocket } from '@/lib/socket';
 
@@ -38,6 +40,8 @@ const SlackPage = () => {
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
   const [typingText, setTypingText] = useState('');
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isCreatingChannel, setIsCreatingChannel] = useState(false);
 
   const typingTimeoutRef = useRef(null);
   const activeChannelRef = useRef(activeChannel);
@@ -56,8 +60,11 @@ const SlackPage = () => {
       if (!channelId) return;
 
       try {
+        console.log('[Chat] Fetching messages for channel:', channelId);
         const response = await axios.get(`${API_BASE_URL}/chat/${channelId}`, axiosConfig);
         const nextMessages = Array.isArray(response.data) ? response.data : [];
+        console.log('[Chat] Fetched', nextMessages.length, 'messages for channel:', channelId);
+        console.log('[Chat] Messages:', nextMessages);
         setMessages(nextMessages);
       } catch (error) {
         console.error('Failed to load messages', error);
@@ -164,14 +171,20 @@ const SlackPage = () => {
     const socket = initializeSocket(API_BASE_URL);
 
     socket.on('receive_message', (payload) => {
+      console.log('[Socket] Received message:', payload);
       const current = activeChannelRef.current;
-      if (!payload?.channelId) return;
+      if (!payload?.channelId) {
+        console.warn('[Socket] Message has no channelId');
+        return;
+      }
 
       if (current?.id === payload.channelId) {
+        console.log('[Socket] Message is for active channel, adding to state');
         setMessages((prev) => addMessageUnique(prev, payload));
         return;
       }
 
+      console.log('[Socket] Message is for inactive channel, marking as unread');
       setChannels((prev) =>
         prev.map((channel) =>
           channel.id === payload.channelId
@@ -202,6 +215,7 @@ const SlackPage = () => {
     });
  
     socket.on('message_deleted', (messageId) => {
+      console.log('[Socket] Message deleted:', messageId);
       const current = activeChannelRef.current;
       if (current) {
         setMessages((prev) => prev.filter(msg => msg._id !== messageId));
@@ -209,6 +223,7 @@ const SlackPage = () => {
     });
 
     socket.on('message_updated', (updatedMsg) => {
+      console.log('[Socket] Message updated:', updatedMsg._id);
       const current = activeChannelRef.current;
       if (current && updatedMsg.channelId === current.id) {
         setMessages((prev) => prev.map(msg => msg._id === updatedMsg._id ? updatedMsg : msg));
@@ -315,6 +330,9 @@ const SlackPage = () => {
     const content = inputMessage.trim();
 
     try {
+      console.log('[Chat] Sending message to channel:', activeChannel.id);
+      console.log('[Chat] Message content:', content);
+      
       const response = await axios.post(
         `${API_BASE_URL}/chat/send/${activeChannel.id}`,
         { content },
@@ -322,6 +340,9 @@ const SlackPage = () => {
       );
 
       const savedMessage = response.data;
+      console.log('[Chat] Message sent successfully:', savedMessage._id);
+      console.log('[Chat] Adding to local state');
+      
       setMessages((prev) => addMessageUnique(prev, savedMessage));
 
       setInputMessage('');
@@ -339,6 +360,8 @@ const SlackPage = () => {
       
       // Append each file if present
       if (files && files.length > 0) {
+        console.log('[Chat] Uploading files to channel:', activeChannel.id);
+        console.log('[Chat] Number of files:', files.length);
         files.forEach(file => {
           formData.append('file', file);
         });
@@ -362,6 +385,9 @@ const SlackPage = () => {
         );
 
         const savedMessage = response.data;
+        console.log('[Chat] File upload successful:', savedMessage._id);
+        console.log('[Chat] Adding to local state');
+        
         setMessages((prev) => addMessageUnique(prev, savedMessage));
       } catch (error) {
         console.error('File upload failed', error);
@@ -393,6 +419,81 @@ const SlackPage = () => {
     };
   }, []);
 
+  const handleCreateChannelClick = useCallback(() => {
+    setIsCreateModalOpen(true);
+  }, []);
+
+  const handleCreateChannel = useCallback(
+    async ({ name, members }) => {
+      console.log('[Channel Creation] selectedRepo:', selectedRepo);
+      console.log('[Channel Creation] user:', user);
+      console.log('[Channel Creation] token available:', !!token);
+      console.log('[Channel Creation] token:', token ? token.substring(0, 30) + '...' : 'NO TOKEN');
+      console.log('[Channel Creation] axiosConfig.headers:', axiosConfig.headers);
+
+      // Get workspaceId from selectedRepo
+      const workspaceId = selectedRepo?.workspaceId;
+
+      if (!workspaceId || !user?.id) {
+        console.error('[Channel Creation] Missing workspace ID or user ID', { workspaceId, userId: user?.id });
+        alert('Cannot create channel: No workspace selected. Make sure you are viewing a workspace.');
+        return;
+      }
+
+      setIsCreatingChannel(true);
+      try {
+        console.log('[Channel Creation] Creating channel:', { name, members, workspaceId });
+
+        const channelData = {
+          name: name.toLowerCase().replace(/\s+/g, '-'), // Format channel name
+          workspaceId: workspaceId, // Use workspace ID
+          isPrivate: false, // Public channel for group chat
+          members: [user.id, ...members], // Include current user + selected members
+        };
+
+        console.log('[Channel Creation] Request payload:', channelData);
+        console.log('[Channel Creation] Headers:', axiosConfig.headers);
+
+        const response = await axios.post(
+          `${API_BASE_URL}/chat/channel/create`,
+          channelData,
+          axiosConfig
+        );
+
+        const newChannel = response.data;
+        console.log('[Channel Creation] Channel created successfully:', newChannel._id);
+
+        // Convert _id to id and format for state
+        const formattedChannel = {
+          id: newChannel._id,
+          name: newChannel.name,
+          isPrivate: newChannel.isPrivate,
+          members: newChannel.members || [],
+          unread: 0
+        };
+
+        // Add new channel to channels list
+        setChannels((prev) => [...prev, formattedChannel]);
+
+        // Switch to the new channel
+        openPublicChannel(formattedChannel);
+
+        // Close modal
+        setIsCreateModalOpen(false);
+      } catch (error) {
+        console.error('[Channel Creation] Full error:', error);
+        console.error('[Channel Creation] Response data:', error.response?.data);
+        console.error('[Channel Creation] Response status:', error.response?.status);
+        const errorMessage = error.response?.data?.message || error.message || 'Failed to create channel';
+        console.error('[Channel Creation] Final error message:', errorMessage);
+        alert(errorMessage);
+      } finally {
+        setIsCreatingChannel(false);
+      }
+    },
+    [API_BASE_URL, selectedRepo?.workspaceId, user?.id, axiosConfig, openPublicChannel]
+  );
+
   return (
     <div className="flex h-[calc(100vh-140px)] rounded-xl overflow-hidden border border-border/40 bg-card shadow-2xl">
       <ChannelList
@@ -401,9 +502,11 @@ const SlackPage = () => {
         activeChannel={activeChannel}
         onSelectChannel={openPublicChannel}
         onSelectDm={openDmChannel}
+        onCreateChannelClick={handleCreateChannelClick}
       />
 
       <div className="flex-1 flex flex-col">
+        <ChatHeader activeChannel={activeChannel} />
         <ChatWindow 
           activeChannel={activeChannel} 
           messages={messages} 
@@ -422,6 +525,15 @@ const SlackPage = () => {
           activeChannelName={activeChannel?.type === 'channel' ? `#${activeChannel?.name}` : activeChannel?.name || ''}
         />
       </div>
+
+      <CreateChannelModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        availableMembers={collaborators}
+        currentUserId={user?.id}
+        onCreateChannel={handleCreateChannel}
+        isLoading={isCreatingChannel}
+      />
     </div>
   );
 };

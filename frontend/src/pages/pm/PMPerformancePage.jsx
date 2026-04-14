@@ -20,7 +20,7 @@ const chartTooltipStyle = {
 };
 
 const PerformancePage = () => {
-    const { API_BASE_URL } = useAuth();
+    const { API_BASE_URL, selectedRepo } = useAuth();
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [workspace, setWorkspace] = useState(null);
@@ -32,8 +32,15 @@ const PerformancePage = () => {
                 const wsRes = await axios.get(`${API_BASE_URL}/workspace/me`, { withCredentials: true });
                 setWorkspace(wsRes.data);
 
-                // 2. Get Performance Data
-                const perfRes = await axios.get(`${API_BASE_URL}/performance/${wsRes.data._id}`, { withCredentials: true });
+                // 2. Get Performance Data - PASS SELECTED REPO TO API
+                let perfUrl = `${API_BASE_URL}/performance/${wsRes.data._id}`;
+                
+                // If a specific repo is selected, pass it as query parameters
+                if (selectedRepo?.owner && selectedRepo?.name) {
+                    perfUrl += `?repoOwner=${encodeURIComponent(selectedRepo.owner)}&repoName=${encodeURIComponent(selectedRepo.name)}`;
+                }
+
+                const perfRes = await axios.get(perfUrl, { withCredentials: true });
                 setData(perfRes.data);
             } catch (err) {
                 console.error('[Performance] Fetch failed:', err);
@@ -45,7 +52,7 @@ const PerformancePage = () => {
         fetchAll();
         const interval = setInterval(fetchAll, 30000); // Poll every 30s
         return () => clearInterval(interval);
-    }, [API_BASE_URL]);
+    }, [API_BASE_URL, selectedRepo]);
 
     if (loading) {
         return (
@@ -69,7 +76,10 @@ const PerformancePage = () => {
                 <div className="flex justify-between items-end">
                     <div>
                         <h1 className="text-2xl font-bold nebula-gradient-text">Nebula Flow Analytics</h1>
-                        <p className="text-muted-foreground text-sm">Deep insights for {workspace?.name || 'Project Manager'}</p>
+                        <p className="text-muted-foreground text-sm">
+                            Deep insights for {workspace?.name || 'Project Manager'}
+                            {selectedRepo && <span className="text-primary"> • Repository: {selectedRepo.name}</span>}
+                        </p>
                     </div>
                     <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 px-3 py-1">
                         Live Sync: Active

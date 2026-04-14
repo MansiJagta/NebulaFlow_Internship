@@ -29,14 +29,14 @@ router.get("/workspace/:workspaceId/channels", async (req, res) => {
       return res.status(400).json({ message: "workspaceId is required" });
     }
 
-    // Find all public channels in workspace OR private ones where user is a member
+    // ✅ UPDATED: Only return channels where user is a member
+    // No longer showing all public channels - must be a member to see any channel
     const channels = await Channel.find({
       workspaceId,
-      $or: [
-        { isPrivate: false },
-        { isPrivate: true, members: userId }
-      ]
+      members: userId  // User must be in members array for ANY channel type
     }).sort({ isPrivate: 1, name: 1 });
+    
+    console.log(`[Chat] User ${userId} has access to ${channels.length} channels in workspace ${workspaceId}`);
 
     res.json(channels);
   } catch (err) {
@@ -53,14 +53,55 @@ router.post("/channel/create", async (req, res) => {
   try {
     const { name, workspaceId, isPrivate = false, members = [] } = req.body;
 
+    console.log('[Channel Creation] Request received:', { name, workspaceId, isPrivate, members });
+
+    // Validate inputs
     if (!workspaceId) {
+      console.error('[Channel Creation] Missing workspaceId');
       return res.status(400).json({ message: "workspaceId is required" });
     }
 
-    // 1. Check if public channel already exists in this workspace
+    if (!name && !isPrivate) {
+      console.error('[Channel Creation] Missing channel name for public channel');
+      return res.status(400).json({ message: "Channel name is required for public channels" });
+    }
+
+    if (!Array.isArray(members)) {
+      console.error('[Channel Creation] Members must be an array');
+      return res.status(400).json({ message: "Members must be an array" });
+    }
+
+    // Get creator ID early (needed for both existing and new channels)
+    const creatorId = req.user.id;
+    const membersList = Array.isArray(members) ? members : [];
+    
+    // Ensure creator is in members list
+    if (!membersList.includes(creatorId)) {
+      membersList.push(creatorId);
+    }
+
+    // 1. Check if public channel already exists in this workspace (by name)
     if (!isPrivate) {
       const existing = await Channel.findOne({ name, workspaceId, isPrivate: false });
-      if (existing) return res.json(existing);
+      if (existing) {
+        console.log('[Channel Creation] Public channel already exists:', existing._id);
+        // IMPORTANT: Auto-add creator to existing channels (for multi-user workspaces)
+        // This ensures all public channels are visible to all users who request to join
+        const updatedChannel = await Channel.findByIdAndUpdate(
+          existing._id,
+          { $addToSet: { members: creatorId } },  // Add creator if not already member
+          { new: true }
+        );
+        
+        // Also add any additional members provided
+        if (members.length > 0) {
+          await Channel.findByIdAndUpdate(updatedChannel._id, {
+            $addToSet: { members: { $each: members } }
+          });
+        }
+        
+        return res.json(updatedChannel);
+      }
     }
 
     // 2. Check if DM/Private channel with exact same members and workspace exists
@@ -70,21 +111,34 @@ router.post("/channel/create", async (req, res) => {
         isPrivate: true,
         members: { $all: members, $size: members.length }
       });
-      if (existing) return res.json(existing);
+      if (existing) {
+        console.log('[Channel Creation] Private channel already exists:', existing._id);
+        return res.json(existing);
+      }
     }
 
+    // 3. Create new channel with members for both public group channels and private DMs
+    // Note: Creator is already added to membersList at the top of this function
     const channel = await Channel.create({
       name: name || (isPrivate ? 'dm' : 'New Channel'),
       workspaceId,
       isPrivate,
-      members: isPrivate ? members : []
+      members: membersList
     });
+
+    console.log(`[Channel Creation] Channel created successfully: ${channel._id} with ${membersList.length} members (including creator)`);
 
     res.json(channel);
 
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed to handle channel creation" });
+    console.error('[Channel Creation] Error:', err.message);
+    console.error('[Channel Creation] Stack:', err.stack);
+    console.error('[Channel Creation] Full error object:', err);
+    res.status(500).json({ 
+      message: "Failed to create channel: " + err.message,
+      error: err.message,
+      details: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    });
   }
 });
 
@@ -139,14 +193,16 @@ router.post("/send/:channelId", checkAccess, async (req, res) => {
       createdAt: messageWithSender.createdAt
     };
 
-    // Emit to socket room
+    // Emit to socket room - BROADCAST TO ALL MEMBERS IN CHANNEL
     const io = req.app.get('io');
     if (io) {
+      console.log(`[Chat] Broadcasting message to channel: ${req.params.channelId}, Members:`, channel.members);
       io.to(req.params.channelId).emit('receive_message', responseData);
     }
 
     res.json(responseData);
   } catch (err) {
+    console.error('[Chat Error]', err);
     res.status(500).json(err.message);
   }
 });
@@ -223,9 +279,10 @@ router.post("/upload/:channelId", checkAccess, async (req, res) => {
       createdAt: messageWithSender.createdAt
     };
 
-    // Emit to socket room
+    // Emit to socket room - BROADCAST TO ALL MEMBERS IN CHANNEL
     const io = req.app.get('io');
     if (io) {
+      console.log(`[Chat File Upload] Broadcasting to channel: ${req.params.channelId}, Members:`, channel.members);
       io.to(req.params.channelId).emit('receive_message', responseData);
     }
 
@@ -243,11 +300,20 @@ router.post("/upload/:channelId", checkAccess, async (req, res) => {
 // =======================================
 router.get("/:channelId", checkAccess, async (req, res) => {
   try {
+    const { channelId } = req.params;
+    const channel = await Channel.findById(channelId);
+    
+    console.log(`[Chat] Fetching messages for channel: ${channelId}`);
+    console.log(`[Chat] Channel members:`, channel?.members);
+    console.log(`[Chat] Current user:`, req.user.id);
+
     const messages = await Message.find({
-      channelId: req.params.channelId
+      channelId: channelId
     })
       .populate("sender", "fullName email avatarUrl")
       .sort({ createdAt: 1 }); // oldest → newest
+
+    console.log(`[Chat] Found ${messages.length} messages for channel: ${channelId}`);
 
     const result = messages.map((m) => {
       try {
@@ -285,6 +351,7 @@ router.get("/:channelId", checkAccess, async (req, res) => {
           createdAt: m.createdAt
         };
       } catch (e) {
+        console.error('[Chat] Decryption error for message:', m._id, e.message);
         // If decryption fails, return as plain text
         return {
           _id: m._id,
@@ -304,7 +371,7 @@ router.get("/:channelId", checkAccess, async (req, res) => {
     res.json(result);
 
   } catch (err) {
-    console.error(err);
+    console.error('[Chat] Error fetching messages:', err);
     res.status(500).json({ message: "Failed to fetch messages" });
   }
 });

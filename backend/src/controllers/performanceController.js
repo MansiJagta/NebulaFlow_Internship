@@ -12,11 +12,17 @@ const { decrypt } = require('../utils/encryption');
 exports.getPerformanceData = async (req, res) => {
   try {
     const { workspaceId } = req.params;
+    const { repoOwner, repoName } = req.query; // Accept repo params from frontend
     const userId = req.user.id;
 
     // 1. Fetch Workspace & GitHub Config
     const workspace = await Workspace.findById(workspaceId).populate('members.userId', 'fullName email avatarUrl');
     if (!workspace) return res.status(404).json({ message: 'Workspace not found' });
+
+    // Determine which repo to use:
+    // Priority: 1) Query params (selected repo), 2) Workspace default config
+    const effectiveRepoOwner = repoOwner || workspace.githubConfig?.repoOwner;
+    const effectiveRepoName = repoName || workspace.githubConfig?.repoName;
 
     // 2. Aggregate Sprint Velocity (Done Issues)
     // We'll calculate a rolling 7-day velocity and bug ratio
@@ -61,23 +67,22 @@ exports.getPerformanceData = async (req, res) => {
 
     // 4. Fetch GitHub Data (Real-time Proxy)
     let githubMetrics = { commits: [], prs: [], avgTurnaround: 0 };
-    if (workspace.githubConfig && workspace.githubConfig.repoOwner && workspace.githubConfig.repoName) {
+    if (effectiveRepoOwner && effectiveRepoName) {
       const identity = await UserIdentity.findOne({ userId, provider: 'github' });
       if (identity && identity.accessTokenEncrypted) {
         try {
           const token = decrypt(identity.accessTokenEncrypted);
-          const { repoOwner, repoName } = workspace.githubConfig;
           const headers = { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' };
 
-          // Fetch Commits (last 7 days)
+          // Fetch Commits (last 7 days) - USING EFFECTIVE REPO
           const commitsRes = await axios.get(
-            `https://api.github.com/repos/${repoOwner}/${repoName}/commits?since=${sevenDaysAgo.toISOString()}`,
+            `https://api.github.com/repos/${effectiveRepoOwner}/${effectiveRepoName}/commits?since=${sevenDaysAgo.toISOString()}`,
             { headers }
           ).catch(() => ({ data: [] }));
 
-          // Fetch Closed PRs (to calculate turnaround)
+          // Fetch Closed PRs (to calculate turnaround) - USING EFFECTIVE REPO
           const prsRes = await axios.get(
-            `https://api.github.com/repos/${repoOwner}/${repoName}/pulls?state=closed&per_page=50`,
+            `https://api.github.com/repos/${effectiveRepoOwner}/${effectiveRepoName}/pulls?state=closed&per_page=50`,
             { headers }
           ).catch(() => ({ data: [] }));
 
@@ -95,9 +100,9 @@ exports.getPerformanceData = async (req, res) => {
             githubMetrics.avgTurnaround = (totalTurnaround / mergedPrs.length / (1000 * 60 * 60)).toFixed(1); // hours
           }
 
-          // Fetch Active GitHub Collaborators to explicitly scope performance tracking
+          // Fetch Active GitHub Collaborators to explicitly scope performance tracking - USING EFFECTIVE REPO
           const collabsRes = await axios.get(
-            `https://api.github.com/repos/${repoOwner}/${repoName}/collaborators?per_page=100`,
+            `https://api.github.com/repos/${effectiveRepoOwner}/${effectiveRepoName}/collaborators?per_page=100`,
             { headers }
           ).catch(() => ({ data: [] }));
 

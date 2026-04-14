@@ -1,5 +1,6 @@
-import { Hash, MessageSquare } from 'lucide-react';
+import { Hash, MessageSquare, Plus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
@@ -11,7 +12,7 @@ const getInitials = (value = '') =>
     .map((part) => part[0]?.toUpperCase())
     .join('') || 'U';
 
-const ChannelList = ({ channels, users, activeChannel, onSelectChannel, onSelectDm }) => {
+const ChannelList = ({ channels, users, activeChannel, onSelectChannel, onSelectDm, onCreateChannelClick }) => {
   return (
     <div className="w-64 bg-sidebar/50 border-r border-border/30 flex flex-col">
       <div className="p-4 border-b border-border/20">
@@ -20,9 +21,20 @@ const ChannelList = ({ channels, users, activeChannel, onSelectChannel, onSelect
 
       <ScrollArea className="flex-1 px-3 py-4">
         <div className="mb-6">
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-2 mb-2">
-            Channels
-          </h3>
+          <div className="flex items-center justify-between px-2 mb-3">
+            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Channels
+            </h3>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 w-6 p-0 hover:bg-primary/20 text-muted-foreground hover:text-primary transition-colors"
+              onClick={onCreateChannelClick}
+              title="Create new channel"
+            >
+              <Plus className="w-4 h-4" />
+            </Button>
+          </div>
 
           {channels.map((channel) => {
             const isActive = activeChannel?.id === channel.id;
