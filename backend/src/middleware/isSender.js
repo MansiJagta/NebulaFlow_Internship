@@ -22,10 +22,20 @@ const isSender = async (req, res, next) => {
     const currentUserId = req.user._id ? req.user._id.toString() : req.user.id;
     const messageSenderId = message.sender ? message.sender.toString() : null;
 
-    if (messageSenderId !== currentUserId) {
+    const Workspace = require('../models/Workspace');
+    const workspace = await Workspace.findById(message.workspaceId);
+    let isPM = false;
+    if (workspace) {
+      const member = workspace.members.find(m => m.userId.toString() === currentUserId);
+      if (member && member.role === 'pm') {
+        isPM = true;
+      }
+    }
+
+    if (messageSenderId !== currentUserId && !isPM) {
       console.warn(`[isSender] Unauthorized attempt: User ${currentUserId} tried to modify message ${messageId} owned by ${messageSenderId}`);
       return res.status(403).json({ 
-        message: 'Access denied. You are not the sender of this message.',
+        message: 'Access denied. You are not the sender of this message and not a workspace PM.',
         userId: currentUserId,
         ownerId: messageSenderId
       });

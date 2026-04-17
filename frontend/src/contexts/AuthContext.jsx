@@ -94,7 +94,8 @@ export const AuthProvider = ({ children }) => {
         });
 
         if (!res.ok) {
-            throw new Error('Login failed');
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || data.message || 'Login failed');
         }
 
         const data = await res.json();
@@ -110,7 +111,8 @@ export const AuthProvider = ({ children }) => {
         });
  
         if (!res.ok) {
-            throw new Error('Registration failed');
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || data.message || 'Registration failed');
         }
  
         const data = await res.json();

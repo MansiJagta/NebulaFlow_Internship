@@ -34,7 +34,10 @@ router.get("/workspace/:workspaceId/channels", async (req, res) => {
     const channels = await Channel.find({
       workspaceId,
       members: userId  // User must be in members array for ANY channel type
-    }).sort({ isPrivate: 1, name: 1 });
+    })
+      .populate('members', 'fullName email avatarUrl')
+      .populate('createdBy', 'fullName email avatarUrl')
+      .sort({ isPrivate: 1, name: 1 });
     
     console.log(`[Chat] User ${userId} has access to ${channels.length} channels in workspace ${workspaceId}`);
 
@@ -123,7 +126,8 @@ router.post("/channel/create", async (req, res) => {
       name: name || (isPrivate ? 'dm' : 'New Channel'),
       workspaceId,
       isPrivate,
-      members: membersList
+      members: membersList,
+      createdBy: creatorId
     });
 
     console.log(`[Channel Creation] Channel created successfully: ${channel._id} with ${membersList.length} members (including creator)`);
@@ -139,6 +143,72 @@ router.post("/channel/create", async (req, res) => {
       error: err.message,
       details: process.env.NODE_ENV === 'development' ? err.stack : undefined
     });
+  }
+});
+
+// =======================================
+// ✅ RENAME CHANNEL
+// =======================================
+router.put("/channel/:channelId/rename", async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name) return res.status(400).json({ message: "Name is required" });
+
+    const channel = await Channel.findById(req.params.channelId);
+    if (!channel) return res.status(404).json({ message: "Channel not found" });
+
+    // Check if user is a PM in the workspace
+    const Workspace = require('../models/Workspace');
+    const workspace = await Workspace.findById(channel.workspaceId);
+    const member = workspace?.members.find(m => m.userId.toString() === req.user.id);
+    
+    if (!member || member.role !== 'pm') {
+      return res.status(403).json({ message: "Only PMs can rename channels" });
+    }
+
+    channel.name = name;
+    await channel.save();
+
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('channel_updated', channel);
+    }
+
+    res.json(channel);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// =======================================
+// ✅ DELETE CHANNEL
+// =======================================
+router.delete("/channel/:channelId", async (req, res) => {
+  try {
+    const channel = await Channel.findById(req.params.channelId);
+    if (!channel) return res.status(404).json({ message: "Channel not found" });
+
+    // Check if user is a PM in the workspace
+    const Workspace = require('../models/Workspace');
+    const workspace = await Workspace.findById(channel.workspaceId);
+    const member = workspace?.members.find(m => m.userId.toString() === req.user.id);
+    
+    if (!member || member.role !== 'pm') {
+      return res.status(403).json({ message: "Only PMs can delete channels" });
+    }
+
+    // Delete associated messages
+    await Message.deleteMany({ channelId: req.params.channelId });
+    await channel.deleteOne();
+
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('channel_deleted', req.params.channelId);
+    }
+
+    res.json({ message: "Channel deleted successfully" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 });
 

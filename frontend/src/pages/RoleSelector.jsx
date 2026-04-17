@@ -3,11 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import ParticleBackground from '@/components/layout/ParticleBackground';
-import { Shield, Users, Rocket, ArrowRight, X, Check } from 'lucide-react';
+import { Shield, Users, ArrowRight, X, Check } from 'lucide-react';
 import { GlassCard } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import NebulaLogo from '@/components/common/NebulaLogo';
 
 const roles = [
     {
@@ -75,10 +76,10 @@ const RoleSelector = () => {
                         transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
                     >
                         <motion.div
-                            className="w-12 h-12 rounded-xl bg-gradient-to-br from-nebula-cyan to-nebula-purple flex items-center justify-center shadow-[0_0_15px_hsla(var(--nebula-cyan),0.4)]"
+                            className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center shadow-xl"
                             whileHover={{ rotate: 15, scale: 1.1 }}
                         >
-                            <Rocket className="w-6 h-6 text-white" />
+                            <NebulaLogo className="w-12 h-12" />
                         </motion.div>
                         <h1 className="text-4xl font-extrabold bg-gradient-to-r from-white via-nebula-cyan to-nebula-purple bg-clip-text text-transparent">
                             Choose Your Role

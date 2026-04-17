@@ -18,15 +18,9 @@ import {
     LogOut,
     ChevronDown
 } from 'lucide-react';
-import {
-    DropdownMenu,
-    DropdownMenuTrigger,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuLabel,
-    DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
+import NebulaLogo from '@/components/common/NebulaLogo';
 
 const Landing = () => {
     const navigate = useNavigate();
@@ -77,9 +71,7 @@ const Landing = () => {
             <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/10 bg-[#0B0C15]/50 backdrop-blur-xl h-20 transition-all duration-300">
                 <div className="container mx-auto h-full flex items-center justify-between px-4 lg:px-8">
                     <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-nebula-cyan to-nebula-purple flex items-center justify-center shadow-lg shadow-nebula-cyan/20">
-                            <span className="font-bold text-white text-lg">N</span>
-                        </div>
+                        <NebulaLogo className="w-10 h-10" />
                         <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-white/70 hidden sm:block">
                             Nebula Flow
                         </h1>
@@ -421,9 +413,7 @@ const Landing = () => {
                         {/* Brand */}
                         <div className="space-y-4">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-nebula-cyan to-nebula-purple flex items-center justify-center">
-                                    <span className="font-bold text-white">N</span>
-                                </div>
+                                <NebulaLogo className="w-8 h-8" />
                                 <span className="font-bold text-white">Nebula Flow</span>
                             </div>
                             <p className="text-sm text-white/60">

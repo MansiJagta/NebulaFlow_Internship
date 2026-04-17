@@ -31,6 +31,7 @@ function signToken(userId) {
 exports.registerWithEmail = async (req, res) => {
   try {
     const { email, password, fullName } = req.body;
+    console.log(`[Auth] Registration attempt for email: ${email}`);
 
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required' });
@@ -65,6 +66,7 @@ exports.registerWithEmail = async (req, res) => {
     }
 
     const token = signToken(user._id.toString());
+    req.session.userId = user._id.toString();
 
     return res.status(201).json({
       user: sanitizeUser(user),
@@ -79,6 +81,7 @@ exports.registerWithEmail = async (req, res) => {
 exports.loginWithEmailPassword = async (req, res) => {
   try {
     const { email, password } = req.body;
+    console.log(`[Auth] Login attempt for email: ${email}`);
 
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required' });
@@ -103,6 +106,7 @@ exports.loginWithEmailPassword = async (req, res) => {
     await user.save();
 
     const token = signToken(user._id.toString());
+    req.session.userId = user._id.toString();
 
     return res.json({
       user: sanitizeUser(user),

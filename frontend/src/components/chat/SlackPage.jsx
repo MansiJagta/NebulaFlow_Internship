@@ -108,6 +108,7 @@ const SlackPage = () => {
         name: c.name,
         isPrivate: c.isPrivate,
         members: c.members || [],
+        createdBy: c.createdBy,
         unread: 0
       }));
     } catch (err) {
@@ -242,12 +243,36 @@ const SlackPage = () => {
       }
     });
 
+    socket.on('channel_deleted', (deletedChannelId) => {
+      console.log('[Socket] Channel deleted:', deletedChannelId);
+      setChannels((prev) => prev.filter(ch => ch.id !== deletedChannelId));
+      // If the deleted channel was active, clear it
+      if (activeChannelRef.current?.id === deletedChannelId) {
+        setActiveChannel(null);
+        setMessages([]);
+      }
+    });
+
+    socket.on('channel_updated', (updatedChannel) => {
+      console.log('[Socket] Channel updated:', updatedChannel._id, updatedChannel.name);
+      const id = updatedChannel._id;
+      setChannels((prev) =>
+        prev.map(ch => ch.id === id ? { ...ch, name: updatedChannel.name } : ch)
+      );
+      // If the renamed channel is active, update active channel state too
+      if (activeChannelRef.current?.id === id) {
+        setActiveChannel((prev) => prev ? { ...prev, name: updatedChannel.name } : prev);
+      }
+    });
+
     return () => {
       socket.off('receive_message');
       socket.off('message_deleted');
       socket.off('message_updated');
       socket.off('typing_start');
       socket.off('typing_stop');
+      socket.off('channel_deleted');
+      socket.off('channel_updated');
       disconnectSocket();
     };
   }, [API_BASE_URL, user?.id]);
@@ -423,6 +448,49 @@ const SlackPage = () => {
     setIsCreateModalOpen(true);
   }, []);
 
+  const handleDeleteChannel = useCallback(
+    async (channelId) => {
+      if (!window.confirm('Are you sure you want to delete this channel? All messages will be permanently removed.')) return;
+      try {
+        await axios.delete(`${API_BASE_URL}/chat/channel/${channelId}`, axiosConfig);
+        // Optimistic update — socket will also broadcast
+        setChannels((prev) => prev.filter((ch) => ch.id !== channelId));
+        if (activeChannel?.id === channelId) {
+          setActiveChannel(null);
+          setMessages([]);
+        }
+      } catch (err) {
+        console.error('[Channel Delete] Error:', err);
+        alert(err.response?.data?.message || 'Failed to delete channel');
+      }
+    },
+    [API_BASE_URL, axiosConfig, activeChannel?.id]
+  );
+
+  const handleRenameChannel = useCallback(
+    async (channelId, newName) => {
+      try {
+        const res = await axios.put(
+          `${API_BASE_URL}/chat/channel/${channelId}/rename`,
+          { name: newName },
+          axiosConfig
+        );
+        const updated = res.data;
+        // Optimistic update — socket will also broadcast
+        setChannels((prev) =>
+          prev.map((ch) => (ch.id === (updated._id || channelId) ? { ...ch, name: updated.name } : ch))
+        );
+        if (activeChannel?.id === channelId) {
+          setActiveChannel((prev) => prev ? { ...prev, name: updated.name } : prev);
+        }
+      } catch (err) {
+        console.error('[Channel Rename] Error:', err);
+        alert(err.response?.data?.message || 'Failed to rename channel');
+      }
+    },
+    [API_BASE_URL, axiosConfig, activeChannel?.id]
+  );
+
   const handleCreateChannel = useCallback(
     async ({ name, members }) => {
       console.log('[Channel Creation] selectedRepo:', selectedRepo);
@@ -497,12 +565,15 @@ const SlackPage = () => {
   return (
     <div className="flex h-[calc(100vh-140px)] rounded-xl overflow-hidden border border-border/40 bg-card shadow-2xl">
       <ChannelList
+        user={user}
         channels={channels}
         users={collaborators}
         activeChannel={activeChannel}
         onSelectChannel={openPublicChannel}
         onSelectDm={openDmChannel}
         onCreateChannelClick={handleCreateChannelClick}
+        onDeleteChannel={handleDeleteChannel}
+        onRenameChannel={handleRenameChannel}
       />
 
       <div className="flex-1 flex flex-col">

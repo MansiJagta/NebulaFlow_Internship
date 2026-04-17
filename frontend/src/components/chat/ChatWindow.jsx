@@ -103,12 +103,7 @@ const ChatWindow = ({ activeChannel, messages, typingText, setMessages, API_BASE
   }, [activeChannel]);
 
   return (
-    <div className="flex-1 flex flex-col bg-background/50 backdrop-blur-sm relative overflow-y-auto">
-      <div className="h-14 border-b border-border/30 flex items-center px-4 bg-card/30 gap-2">
-        {activeChannel?.type === 'channel' ? <Hash className="w-4 h-4 text-muted-foreground" /> : null}
-        <h2 className="font-bold text-foreground truncate">{headerTitle}</h2>
-      </div>
-
+    <div className="flex-1 flex flex-col bg-background relative overflow-y-auto">
       <ScrollArea className="flex-1 p-4">
         <div className="space-y-5">
           {messages.map((message) => {
@@ -237,7 +232,7 @@ const ChatWindow = ({ activeChannel, messages, typingText, setMessages, API_BASE
                     )}
                   </div>
                 </div>
-                {senderId === user?.id && !isEditing && (
+                {(senderId === user?.id || user?.role === 'pm') && !isEditing && (
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 self-start mt-1 bg-background/80 backdrop-blur-md border border-border/50 rounded-md p-0.5 shadow-sm">
                     <button 
                       onClick={() => handleEditClick(message)} 

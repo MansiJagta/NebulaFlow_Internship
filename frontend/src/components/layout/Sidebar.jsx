@@ -11,6 +11,7 @@ import { useState, useMemo } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import RoleBadge from '@/components/common/RoleBadge';
 import CollaboratorsSection from '@/components/layout/CollaboratorsSection';
+import NebulaLogo from '@/components/common/NebulaLogo';
 
 const pmLinks = [
     { to: '/pm/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -70,7 +71,7 @@ const Sidebar = ({ collapsed: propCollapsed, setCollapsed: propSetCollapsed }) =
             {/* Logo */}
             <div className="p-4 flex items-center gap-2 border-b border-sidebar-border">
                 <button onClick={() => navigate('/')} className="flex items-center gap-2 focus:outline-none">
-                    <Rocket className="w-6 h-6 text-primary flex-shrink-0" />
+                    <NebulaLogo className="w-8 h-8" />
                     {!collapsed && (
                         <motion.span
                             initial={{ opacity: 0 }}

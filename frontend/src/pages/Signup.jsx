@@ -4,10 +4,11 @@ import { motion } from 'framer-motion';
 import axios from 'axios';
 import { useAuth } from '@/contexts/AuthContext';
 import ParticleBackground from '@/components/layout/ParticleBackground';
-import { Rocket, Mail, Lock, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { GlassCard } from '@/components/ui/card';
+import NebulaLogo from '@/components/common/NebulaLogo';
 
 const Signup = () => {
     const [email, setEmail] = useState('');
@@ -112,10 +113,10 @@ const Signup = () => {
                             transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
                         >
                             <motion.div
-                                className="w-14 h-14 rounded-2xl bg-gradient-to-br from-nebula-cyan to-nebula-purple flex items-center justify-center shadow-[0_0_20px_hsla(var(--nebula-cyan),0.4)]"
+                                className="w-16 h-16 rounded-2xl bg-gradient-to-br from-nebula-cyan/20 to-nebula-purple/20 border border-white/10 flex items-center justify-center shadow-[0_0_20px_hsla(var(--nebula-cyan),0.2)]"
                                 whileHover={{ rotate: 15, scale: 1.1 }}
                             >
-                                <Rocket className="w-7 h-7 text-white" />
+                                <NebulaLogo className="w-10 h-10" />
                             </motion.div>
                             <h1 className="text-4xl font-extrabold bg-gradient-to-r from-white via-nebula-cyan to-nebula-purple bg-clip-text text-transparent">
                                 Create your Nebula Flow account

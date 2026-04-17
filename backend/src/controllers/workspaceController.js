@@ -223,19 +223,34 @@ exports.getWorkspaceMembers = async (req, res) => {
 
     if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
 
-    const scopedMembers = workspace.members
-      .filter(m => m.userId && m.userId.lastSeenAt)
-      .map(m => ({
-        _id: m.userId._id,
-        fullName: m.userId.fullName,
-        email: m.userId.email,
-        avatarUrl: m.userId.avatarUrl,
-        role: m.role || 'collaborator',
-        status: m.userId.isActive ? 'online' : 'offline'
-      }));
+    // Deduplicate members — PM role takes priority over collaborator
+    const uniqueMap = new Map();
+    workspace.members.forEach(m => {
+      if (!m.userId) return;
+      const idStr = m.userId._id.toString();
+      const memberRole = m.role || 'collaborator';
+
+      const existing = uniqueMap.get(idStr);
+      if (!existing) {
+        uniqueMap.set(idStr, {
+          _id: m.userId._id,
+          fullName: m.userId.fullName,
+          email: m.userId.email,
+          avatarUrl: m.userId.avatarUrl,
+          role: memberRole,
+          status: m.userId.isActive !== false ? 'online' : 'offline'
+        });
+      } else if (memberRole === 'pm' && existing.role !== 'pm') {
+        existing.role = 'pm';
+      }
+    });
+
+    const scopedMembers = Array.from(uniqueMap.values());
+    console.log(`[getWorkspaceMembers] Returning ${scopedMembers.length} members for workspace ${workspaceId}`);
 
     res.json(scopedMembers);
   } catch (err) {
+    console.error('[getWorkspaceMembers] Error:', err.message);
     res.status(500).json({ error: 'Failed to load scoped collaborators' });
   }
 };
@@ -254,27 +269,76 @@ exports.getMyWorkspace = async (req, res) => {
     if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
 
     // Find current user's membership and extract their workspace role
+    // When deduplicating, PM role always takes priority over collaborator
     let currentUserRole = null;
     const uniqueMembersMap = new Map();
     
     workspace.members.forEach(m => {
-      if (m.userId && !uniqueMembersMap.has(m.userId._id.toString())) {
-        const memberRole = m.role || 'collaborator';
-        
-        // Check if this is the current user
-        if (m.userId._id.toString() === userIdStr) {
+      if (!m.userId) return;
+      
+      const memberIdStr = m.userId._id.toString();
+      const memberRole = m.role || 'collaborator';
+      
+      // Check if this is the current user — prefer 'pm' over 'collaborator'
+      if (memberIdStr === userIdStr) {
+        if (!currentUserRole || memberRole === 'pm') {
           currentUserRole = memberRole;
         }
-        
-        uniqueMembersMap.set(m.userId._id.toString(), {
+      }
+      
+      const existing = uniqueMembersMap.get(memberIdStr);
+      if (!existing) {
+        uniqueMembersMap.set(memberIdStr, {
           _id: m.userId._id,
           fullName: m.userId.fullName,
           email: m.userId.email,
           avatarUrl: m.userId.avatarUrl,
           role: memberRole
         });
+      } else {
+        // If duplicate found, prefer PM role
+        if (memberRole === 'pm' && existing.role !== 'pm') {
+          existing.role = 'pm';
+        }
       }
     });
+
+    // Clean up duplicates in the database if found
+    const rawMemberCount = workspace.members.length;
+    const uniqueCount = uniqueMembersMap.size;
+    if (rawMemberCount > uniqueCount) {
+      console.log(`[Workspace] Found ${rawMemberCount - uniqueCount} duplicate member entries, cleaning up...`);
+      
+      // Build a clean members array preserving PM roles
+      const seen = new Set();
+      const cleanMembers = [];
+      
+      // First pass: collect all PM entries
+      workspace.members.forEach(m => {
+        if (!m.userId) return;
+        const id = m.userId._id.toString();
+        if (m.role === 'pm' && !seen.has(id)) {
+          seen.add(id);
+          cleanMembers.push({ userId: m.userId._id, role: 'pm', joinedAt: m.joinedAt });
+        }
+      });
+      
+      // Second pass: collect non-PM entries for users not yet seen
+      workspace.members.forEach(m => {
+        if (!m.userId) return;
+        const id = m.userId._id.toString();
+        if (!seen.has(id)) {
+          seen.add(id);
+          cleanMembers.push({ userId: m.userId._id, role: m.role || 'collaborator', joinedAt: m.joinedAt });
+        }
+      });
+      
+      // Update the workspace with clean members (fire and forget)
+      Workspace.updateOne(
+        { _id: workspace._id },
+        { $set: { members: cleanMembers } }
+      ).exec().catch(err => console.error('[Workspace] Cleanup failed:', err.message));
+    }
 
     console.log(`[Workspace] User ${userIdStr} workspace role: ${currentUserRole}`);
 

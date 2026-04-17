@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { UserPlus, Mail, Shield, Send, Check, Clock, MoreVertical, Trash2, RefreshCw, Github, Loader2, AtSign, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { UserPlus, Mail, Shield, Send, Check, Clock, MoreVertical, Trash2, RefreshCw, Github, Loader2, AtSign, AlertTriangle, CheckCircle2, XCircle, UserX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -10,39 +10,23 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
-// Fallback static members shown when no repo is linked
-const FALLBACK_MEMBERS = [
-    { id: '1', name: 'Alice Chen', login: 'alice-chen', email: 'alice@nebula.dev', role: 'Developer', avatarUrl: '', lastActive: '2m ago' },
-    { id: '2', name: 'Bob Kumar', login: 'bob-kumar', email: 'bob@nebula.dev', role: 'Developer', avatarUrl: '', lastActive: '1h ago' },
-    { id: '3', name: 'Carol Davis', login: 'carol-davis', email: 'carol@nebula.dev', role: 'Designer', avatarUrl: '', lastActive: '5h ago' },
-    { id: '4', name: 'Dave Wilson', login: 'dave-wilson', email: 'dave@nebula.dev', role: 'DevOps', avatarUrl: '', lastActive: '1d ago' },
-];
-
-const FALLBACK_INVITES = [
-    { id: '5', email: 'eve@nebula.dev', role: 'Frontend', status: 'pending' },
-    { id: '6', email: 'frank@nebula.dev', role: 'QA', status: 'pending' },
-];
-
 import { useRBAC } from '@/hooks/useRBAC';
 
 const PMAddMembers = () => {
     const navigate = useNavigate();
     const { isPM, canInvite } = useRBAC();
     const { user, selectedRepo, token, API_BASE_URL } = useAuth();
-    
-    // userIsPM will be true if the user has PM role in the workspace
-    // This controls visibility of invite forms and add buttons
 
     const [email, setEmail] = useState('');
     const [githubUsername, setGithubUsername] = useState('');
     const [role, setRole] = useState('collaborator');
     const [isInviting, setIsInviting] = useState(false);
     const [inviteResult, setInviteResult] = useState(null);
-    const [invites, setInvites] = useState(FALLBACK_INVITES);
+    const [emailInvites, setEmailInvites] = useState([]);
     const [members, setMembers] = useState([]);
     const [workspaceMembers, setWorkspaceMembers] = useState([]);
     const [githubCollaborators, setGithubCollaborators] = useState([]);
-    const [availableToAdd, setAvailableToAdd] = useState([]);
+    const [allGHCollaborators, setAllGHCollaborators] = useState([]);
     const [loading, setLoading] = useState(false);
     const [workspace, setWorkspace] = useState(null);
     const [error, setError] = useState(null);
@@ -54,7 +38,7 @@ const PMAddMembers = () => {
             setLoading(true);
             setError(null);
             try {
-                // 1. Fetch workspace (will get updated GitHub config if repo switched)
+                // 1. Fetch workspace
                 const wsRes = await axios.get(`${API_BASE_URL}/workspace/me`, {
                     withCredentials: true,
                     headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -66,7 +50,6 @@ const PMAddMembers = () => {
                 setWorkspaceMembers(wsMembersData);
 
                 // 2. Determine repoOwner and repoName
-                // ALWAYS prefer selectedRepo since that's what the user actively chose
                 const owner = selectedRepo?.owner || currentWs?.githubConfig?.repoOwner;
                 const repo = selectedRepo?.name || selectedRepo?.fullName?.split('/')[1] || currentWs?.githubConfig?.repoName;
                 const ownerLogin = (owner || '').toLowerCase();
@@ -111,19 +94,19 @@ const PMAddMembers = () => {
                             };
                         });
 
-                        setAvailableToAdd(enriched);
+                        setAllGHCollaborators(enriched);
                     } catch (err) {
                         const errMsg = err.response?.data?.error || err.message;
                         console.warn('[PMAddMembers] GitHub collaborators fetch failed:', errMsg);
                         setGithubCollaborators([]);
-                        setAvailableToAdd([]);
+                        setAllGHCollaborators([]);
                     }
                 }
 
                 // 4. Populate Local State for the bottom "Collaborators" list
-                // Show GitHub collaborators who have logged into our platform (hasAccount = true / tick mark)
+                // Only show users who are IN the workspace
                 const confirmedTeammates = enriched
-                    .filter(u => u.hasAccount)
+                    .filter(u => u.isInWorkspace && u.status !== 'pending_github')
                     .map(u => ({
                         id: u.userId || u.login,
                         name: u.name || u.login,
@@ -131,9 +114,10 @@ const PMAddMembers = () => {
                         email: u.email || `${u.login}@github.com`,
                         role: resolveWorkspaceRole(u, u.wsRole || null),
                         avatarUrl: u.avatarUrl || '',
-                        lastActive: u.isInWorkspace ? 'Workspace Member' : 'Platform User',
+                        lastActive: 'Workspace Member',
                         profileUrl: u.profileUrl,
                         isInWorkspace: u.isInWorkspace,
+                        hasAccount: u.hasAccount,
                     }));
 
                 setMembers(confirmedTeammates);
@@ -149,6 +133,33 @@ const PMAddMembers = () => {
 
         fetchData();
     }, [API_BASE_URL, token, selectedRepo]);
+
+    // Derived data: split GitHub collaborators into categories
+    const { activeGHCollaborators, pendingGHInvites } = useMemo(() => {
+        const active = allGHCollaborators.filter(u => u.status !== 'pending_github');
+        const pending = allGHCollaborators.filter(u => u.status === 'pending_github');
+        return { activeGHCollaborators: active, pendingGHInvites: pending };
+    }, [allGHCollaborators]);
+
+    // Combined pending invites: email invites + GitHub pending invitations
+    const allPendingInvites = useMemo(() => {
+        const ghPending = pendingGHInvites.map(p => ({
+            id: `gh-${p.login}`,
+            email: p.email || `@${p.login}`,
+            name: p.name || p.login,
+            login: p.login,
+            avatarUrl: p.avatarUrl,
+            profileUrl: p.profileUrl,
+            role: p.role || 'Developer',
+            status: 'pending_github',
+            source: 'github',
+        }));
+        const emailPending = emailInvites.map(inv => ({
+            ...inv,
+            source: 'email',
+        }));
+        return [...ghPending, ...emailPending];
+    }, [pendingGHInvites, emailInvites]);
 
     const handleInvite = async () => {
         if (!email) return;
@@ -174,8 +185,8 @@ const PMAddMembers = () => {
             );
 
             setInviteResult(res.data);
-            // Add to pending invites list
-            setInvites(prev => [...prev, { id: Date.now().toString(), email, role, status: 'pending' }]);
+            // Add to pending email invites list
+            setEmailInvites(prev => [...prev, { id: Date.now().toString(), email, role, status: 'pending' }]);
             setEmail('');
             setGithubUsername('');
         } catch (err) {
@@ -221,7 +232,7 @@ const PMAddMembers = () => {
     };
 
     const handleRevokeInvite = (id) => {
-        setInvites(prev => prev.filter(i => i.id !== id));
+        setEmailInvites(prev => prev.filter(i => i.id !== id));
     };
 
     const handleAddMemberToWorkspace = async (githubUser) => {
@@ -238,6 +249,13 @@ const PMAddMembers = () => {
 
             const assignedRole = res.data?.role || 'collaborator';
 
+            // Update the allGHCollaborators to mark as in workspace
+            setAllGHCollaborators(prev => prev.map(u => 
+                u.login === githubUser.login 
+                    ? { ...u, isInWorkspace: true, wsRole: assignedRole }
+                    : u
+            ));
+
             // Add to workspace members
             setWorkspaceMembers(prev => [...prev, {
                 _id: githubUser.login,
@@ -247,10 +265,7 @@ const PMAddMembers = () => {
                 role: assignedRole,
             }]);
 
-            // Remove from available to add
-            setAvailableToAdd(prev => prev.filter(u => u.login !== githubUser.login));
-
-            // Add to members for display
+            // Add to members (Collaborators section) for display
             setMembers(prev => [...prev, {
                 id: githubUser.login,
                 name: githubUser.name || githubUser.login,
@@ -261,6 +276,7 @@ const PMAddMembers = () => {
                 lastActive: 'Workspace Member',
                 profileUrl: githubUser.profileUrl,
                 isInWorkspace: true,
+                hasAccount: true,
             }]);
         } catch (err) {
             const msg = err.response?.data?.error || err.message;
@@ -268,6 +284,47 @@ const PMAddMembers = () => {
         } finally {
             setIsAdding(prev => ({ ...prev, [githubUser.login]: false }));
         }
+    };
+
+    // Helper to determine the action/status button for each GH collaborator
+    const renderGHUserAction = (ghUser) => {
+        // Case 1: Already in workspace (Collaborators section) → "Already in Team"
+        if (ghUser.isInWorkspace) {
+            return (
+                <Button disabled variant="outline" size="sm" className="opacity-60 h-8 border-green-500/30 text-green-500 cursor-default">
+                    <Check className="w-3.5 h-3.5 mr-1" /> Already in Team
+                </Button>
+            );
+        }
+
+        // Case 2: Has a platform account but not in workspace → "Add to Team" (PM only)
+        if (ghUser.hasAccount) {
+            return isPM ? (
+                <Button
+                    onClick={() => handleAddMemberToWorkspace(ghUser)}
+                    disabled={isAdding[ghUser.login]}
+                    size="sm"
+                    className="bg-secondary hover:bg-secondary/90 h-8"
+                >
+                    {isAdding[ghUser.login] ? (
+                        <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> Adding…</>
+                    ) : (
+                        <><UserPlus className="w-3.5 h-3.5 mr-1" /> Add to Team</>
+                    )}
+                </Button>
+            ) : (
+                <Badge variant="outline" className="text-blue-400 border-blue-400/30 text-[11px] h-7 px-2.5 border-dashed font-normal">
+                    <CheckCircle2 className="w-3 h-3 mr-1" /> Registered
+                </Badge>
+            );
+        }
+
+        // Case 3: Not registered on platform → "Not Registered"
+        return (
+            <Badge variant="outline" className="text-muted-foreground border-muted-foreground/30 text-[11px] h-7 px-2.5 border-dashed font-normal">
+                <UserX className="w-3 h-3 mr-1" /> Not Registered
+            </Badge>
+        );
     };
 
     return (
@@ -398,19 +455,19 @@ const PMAddMembers = () => {
             </motion.div>
             )}
 
-            {/* Available to Add Section */}
-            {availableToAdd.length > 0 && (
+            {/* GitHub Repository Collaborators Section (active only, no pending) */}
+            {activeGHCollaborators.length > 0 && (
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="nebula-card p-6 border-primary/20 bg-secondary/5">
                     <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
                         <div className="p-1.5 bg-secondary/20 rounded-md text-secondary"><Github className="w-4 h-4" /></div>
-                        GitHub Repository Collaborators ({availableToAdd.length})
+                        GitHub Repository Collaborators ({activeGHCollaborators.length})
                     </h3>
                     <p className="text-xs text-muted-foreground mb-4">
-                        Manage everyone with direct access to your GitHub repository.
+                        Everyone with direct access to your GitHub repository. Only users who are added to the team below appear as workspace members.
                     </p>
                     <div className="space-y-4">
                         <AnimatePresence>
-                            {availableToAdd.map((ghUser) => (
+                            {activeGHCollaborators.map((ghUser) => (
                                 <motion.div
                                     key={ghUser.login}
                                     initial={{ opacity: 0, height: 0 }}
@@ -436,7 +493,6 @@ const PMAddMembers = () => {
                                             <div className="flex items-center gap-2">
                                                 <p className="text-sm font-medium text-foreground">{ghUser.name || ghUser.login}</p>
                                                 {ghUser.isInWorkspace && <Badge className="bg-green-500/10 text-green-500 text-[10px] h-4 py-0 border-none px-1.5">Member</Badge>}
-                                                {ghUser.status === 'pending_github' && <Badge variant="outline" className="text-amber-500 border-amber-500/30 text-[10px] h-4 py-0 px-1.5 border-dashed">Pending on GH</Badge>}
                                             </div>
                                             <div className="flex items-center gap-2">
                                                 <span className="text-xs text-muted-foreground">{ghUser.role || 'Developer'}</span>
@@ -455,45 +511,7 @@ const PMAddMembers = () => {
                                     </div>
                                     
                                     <div className="flex items-center gap-2">
-                                        {ghUser.isInWorkspace ? (
-                                            <Button disabled variant="outline" size="sm" className="opacity-50 h-8 border-green-500/30 text-green-500">
-                                                <Check className="w-3.5 h-3.5 mr-1" /> Already in Team
-                                            </Button>
-                                        ) : ghUser.status === 'pending_github' ? (
-                                            <Button disabled variant="outline" size="sm" className="opacity-50 h-8 border-amber-500/30 text-amber-500">
-                                                <Clock className="w-3.5 h-3.5 mr-1" /> Invited on GH
-                                            </Button>
-                                        ) : ghUser.hasAccount ? (
-                                            isPM ? (
-                                                <Button
-                                                    onClick={() => handleAddMemberToWorkspace(ghUser)}
-                                                    disabled={isAdding[ghUser.login]}
-                                                    size="sm"
-                                                    className="bg-secondary hover:bg-secondary/90 h-8"
-                                                >
-                                                    {isAdding[ghUser.login] ? (
-                                                        <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> Adding…</>
-                                                    ) : (
-                                                        <><UserPlus className="w-3.5 h-3.5 mr-1" /> Add to Team</>
-                                                    )}
-                                                </Button>
-                                            ) : null
-                                        ) : (
-                                            isPM ? (
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="border-primary/50 text-primary hover:bg-primary/10 h-8"
-                                                    onClick={() => {
-                                                        setGithubUsername(ghUser.login);
-                                                        setEmail(ghUser.email || '');
-                                                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                                                    }}
-                                                >
-                                                    <Mail className="w-3.5 h-3.5 mr-1" /> Invite via Email
-                                                </Button>
-                                            ) : null
-                                        )}
+                                        {renderGHUserAction(ghUser)}
                                     </div>
                                 </motion.div>
                             ))}
@@ -503,12 +521,12 @@ const PMAddMembers = () => {
             )}
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Pending Invites */}
+                {/* Pending Invites - includes both email invites AND GitHub pending invitations */}
                 <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 }} className="space-y-4">
-                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider px-1">Pending Invites ({invites.length})</h3>
+                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider px-1">Pending Invites ({allPendingInvites.length})</h3>
                     <div className="space-y-2">
                         <AnimatePresence>
-                            {invites.map((invite) => (
+                            {allPendingInvites.map((invite) => (
                                 <motion.div
                                     key={invite.id}
                                     initial={{ opacity: 0, height: 0 }}
@@ -517,29 +535,55 @@ const PMAddMembers = () => {
                                     className="nebula-card p-3 flex items-center justify-between group"
                                 >
                                     <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-full bg-muted/30 flex items-center justify-center border border-dashed border-border">
-                                            <Clock className="w-5 h-5 text-muted-foreground animate-pulse" />
-                                        </div>
+                                        {invite.source === 'github' && invite.avatarUrl ? (
+                                            <Avatar className="w-10 h-10 border-2 border-background">
+                                                <img src={invite.avatarUrl} alt={invite.login || invite.name} />
+                                                <AvatarFallback className="bg-gradient-to-br from-amber-500/20 to-orange-500/20">
+                                                    {(invite.name || invite.login || '?')[0].toUpperCase()}
+                                                </AvatarFallback>
+                                            </Avatar>
+                                        ) : (
+                                            <div className="w-10 h-10 rounded-full bg-muted/30 flex items-center justify-center border border-dashed border-border">
+                                                <Clock className="w-5 h-5 text-muted-foreground animate-pulse" />
+                                            </div>
+                                        )}
                                         <div>
-                                            <p className="text-sm font-medium text-foreground">{invite.email}</p>
+                                            <p className="text-sm font-medium text-foreground">
+                                                {invite.source === 'github' ? (invite.name || invite.login) : invite.email}
+                                            </p>
                                             <div className="flex items-center gap-2">
                                                 <Badge variant="outline" className="text-[10px] py-0 px-1.5 border-dashed border-muted-foreground/40 text-muted-foreground font-normal">{invite.role}</Badge>
-                                                <span className="text-[10px] text-muted-foreground">Sent today</span>
+                                                {invite.source === 'github' ? (
+                                                    <Badge variant="outline" className="text-[10px] py-0 px-1.5 border-dashed border-amber-500/40 text-amber-500 font-normal">
+                                                        <Github className="w-2.5 h-2.5 mr-0.5" /> Pending on GitHub
+                                                    </Badge>
+                                                ) : (
+                                                    <span className="text-[10px] text-muted-foreground">Sent today</span>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-foreground" title="Resend">
-                                            <RefreshCw className="w-4 h-4" />
-                                        </Button>
-                                        <Button onClick={() => handleRevokeInvite(invite.id)} size="icon" variant="ghost" className="h-8 w-8 text-red-400 hover:text-red-500 hover:bg-red-500/10" title="Revoke">
-                                            <Trash2 className="w-4 h-4" />
-                                        </Button>
-                                    </div>
+                                    {invite.source === 'email' && (
+                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-foreground" title="Resend">
+                                                <RefreshCw className="w-4 h-4" />
+                                            </Button>
+                                            <Button onClick={() => handleRevokeInvite(invite.id)} size="icon" variant="ghost" className="h-8 w-8 text-red-400 hover:text-red-500 hover:bg-red-500/10" title="Revoke">
+                                                <Trash2 className="w-4 h-4" />
+                                            </Button>
+                                        </div>
+                                    )}
+                                    {invite.source === 'github' && invite.profileUrl && (
+                                        <a href={invite.profileUrl} target="_blank" rel="noopener noreferrer">
+                                            <Button size="sm" variant="ghost" className="h-8 text-xs text-muted-foreground hover:text-foreground">
+                                                <Github className="w-3.5 h-3.5 mr-1" /> View Profile
+                                            </Button>
+                                        </a>
+                                    )}
                                 </motion.div>
                             ))}
                         </AnimatePresence>
-                        {invites.length === 0 && (
+                        {allPendingInvites.length === 0 && (
                             <div className="text-center p-8 border-2 border-dashed border-border/20 rounded-lg text-muted-foreground text-sm">
                                 No pending invites
                             </div>
@@ -547,7 +591,7 @@ const PMAddMembers = () => {
                     </div>
                 </motion.div>
 
-                {/* Active Members / Collaborators */}
+                {/* Active Members / Collaborators - only workspace members */}
                 <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }} className="space-y-4">
                     <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider px-1">
                         {selectedRepo ? `Collaborators (${members.length})` : `Active Members (${members.length})`}
@@ -622,8 +666,8 @@ const PMAddMembers = () => {
                         {members.length === 0 && !loading && (
                             <div className="text-center p-8 border-2 border-dashed border-border/20 rounded-lg text-muted-foreground text-sm bg-primary/2">
                                 <Github className="w-8 h-8 mx-auto mb-2 opacity-20" />
-                                <p>No GitHub collaborators of this repo have <br/> signed into Nebula Flow yet.</p>
-                                <p className="text-[10px] mt-2 opacity-60">Once collaborators log in to the platform, they'll appear here automatically.</p>
+                                <p>No GitHub collaborators of this repo have <br/> been added to the team yet.</p>
+                                <p className="text-[10px] mt-2 opacity-60">Use the "Add to Team" button above to add registered collaborators to your workspace.</p>
                             </div>
                         )}
                     </div>

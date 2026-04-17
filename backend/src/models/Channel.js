@@ -49,7 +49,8 @@ const channelSchema = new mongoose.Schema({
     index: true
   },
   isPrivate: { type: Boolean, default: false },
-  members: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }]
+  members: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" }
 }, { timestamps: true });
 
 module.exports = mongoose.model("Channel", channelSchema);

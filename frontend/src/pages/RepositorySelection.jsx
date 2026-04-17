@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/AuthContext";
+import NebulaLogo from "@/components/common/NebulaLogo";
 import {
     DropdownMenu,
     DropdownMenuTrigger,
@@ -139,9 +140,7 @@ const RepositorySelection = () => {
             <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/10 bg-[#0B0C15]/50 backdrop-blur-xl h-20">
                 <div className="container mx-auto h-full flex items-center justify-between px-4 lg:px-8">
                     <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-nebula-cyan to-nebula-purple flex items-center justify-center shadow-lg shadow-nebula-cyan/20">
-                            <span className="font-bold text-white text-lg">N</span>
-                        </div>
+                        <NebulaLogo className="w-10 h-10" />
                         <h1 className="text-xl font-bold text-white hidden sm:block">
                             Nebula Flow
                         </h1>

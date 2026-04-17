@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import ParticleBackground from '@/components/layout/ParticleBackground';
-import { Rocket, Mail, Lock, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { GlassCard } from '@/components/ui/card';
+import NebulaLogo from '@/components/common/NebulaLogo';
 
 const Login = () => {
     const [email, setEmail] = useState('');
@@ -14,15 +15,22 @@ const Login = () => {
     const [loading, setLoading] = useState(false);
     const [remember, setRemember] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
+    const [error, setError] = useState('');
     const { login } = useAuth();
     const navigate = useNavigate();
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
-        await login(email, password);
-        setLoading(false);
-        navigate('/repository-selection');
+        setError('');
+        try {
+            await login(email, password);
+            navigate('/repository-selection');
+        } catch (err) {
+            setError(err.message || 'Login failed. Please check your credentials.');
+        } finally {
+            setLoading(false);
+        }
     };
     
     const handleGoogleSignIn = () => {
@@ -68,10 +76,10 @@ const Login = () => {
                             transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
                         >
                             <motion.div
-                                className="w-14 h-14 rounded-2xl bg-gradient-to-br from-nebula-cyan to-nebula-purple flex items-center justify-center shadow-[0_0_20px_hsla(var(--nebula-cyan),0.4)]"
+                                className="w-16 h-16 rounded-2xl bg-gradient-to-br from-nebula-cyan/20 to-nebula-purple/20 border border-white/10 flex items-center justify-center shadow-[0_0_20px_hsla(var(--nebula-cyan),0.2)]"
                                 whileHover={{ rotate: 15, scale: 1.1 }}
                             >
-                                <Rocket className="w-7 h-7 text-white" />
+                                <NebulaLogo className="w-10 h-10" />
                             </motion.div>
                             <h1 className="text-4xl font-extrabold bg-gradient-to-r from-white via-nebula-cyan to-nebula-purple bg-clip-text text-transparent">
                                 Nebula Flow
@@ -160,6 +168,16 @@ const Login = () => {
                                 Forgot password?
                             </a>
                         </motion.div>
+
+                        {error && (
+                            <motion.p
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                className="text-xs text-red-400 font-medium px-1"
+                            >
+                                {error}
+                            </motion.p>
+                        )}
 
                         {/* Sign In Button with Ripple (Gradient variant) */}
                         <motion.div
