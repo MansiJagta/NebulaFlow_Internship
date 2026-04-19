@@ -45,7 +45,11 @@ exports.getRepoDetails = async (req, res) => {
             return res.status(401).json({ error: 'GitHub not connected' });
         }
 
-        const headers = { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' };
+        const headers = { 
+            Authorization: `Bearer ${token}`, 
+            Accept: 'application/vnd.github+json',
+            'User-Agent': 'NebulaFlow-App'
+        };
         const base = `https://api.github.com/repos/${owner}/${repo}`;
 
         // Parallel fetch
@@ -157,7 +161,11 @@ exports.getRepoCollaborators = async (req, res) => {
             return res.status(401).json({ error: 'GitHub not connected' });
         }
 
-        const headers = { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' };
+        const headers = { 
+            Authorization: `Bearer ${token}`, 
+            Accept: 'application/vnd.github+json',
+            'User-Agent': 'NebulaFlow-App'
+        };
         const base = `https://api.github.com/repos/${owner}/${repo}`;
 
         // 1. Fetch ALL active collaborators (direct, outside, etc.)
@@ -303,6 +311,7 @@ exports.syncGitHubRepository = async (req, res) => {
         const headers = {
             Authorization: `Bearer ${token}`,
             Accept: 'application/vnd.github+json',
+            'User-Agent': 'NebulaFlow-App',
         };
 
         // Step 3: Fetch repo info from GitHub to get owner details

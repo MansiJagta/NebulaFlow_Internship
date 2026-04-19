@@ -27,7 +27,6 @@ import CollaboratorJiraPage from "@/pages/collaborator/CollaboratorJiraPage";
 import CollaboratorSlackPage from "@/pages/collaborator/CollaboratorSlackPage";
 import CollaboratorGitHubPage from "@/pages/collaborator/CollaboratorGitHubPage";
 import CollaboratorPerformancePage from "@/pages/collaborator/CollaboratorPerformancePage";
-import CollaboratorGroupDashboard from "@/pages/collaborator/CollaboratorGroupDashboard";
 
 const queryClient = new QueryClient();
 
@@ -68,7 +67,6 @@ const App = () => (
                             <Route path="/collaborator/slack" element={<CollaboratorSlackPage />} />
                             <Route path="/collaborator/github" element={<CollaboratorGitHubPage />} />
                             <Route path="/collaborator/performance" element={<CollaboratorPerformancePage />} />
-                            <Route path="/collaborator/group" element={<CollaboratorGroupDashboard />} />
                         </Route>
 
                         <Route path="*" element={<NotFound />} />

@@ -238,7 +238,7 @@ exports.getWorkspaceMembers = async (req, res) => {
           email: m.userId.email,
           avatarUrl: m.userId.avatarUrl,
           role: memberRole,
-          status: m.userId.isActive !== false ? 'online' : 'offline'
+          status: (m.userId.lastSeenAt && (new Date() - new Date(m.userId.lastSeenAt)) < 300000) ? 'online' : 'offline'
         });
       } else if (memberRole === 'pm' && existing.role !== 'pm') {
         existing.role = 'pm';
@@ -349,11 +349,71 @@ exports.getMyWorkspace = async (req, res) => {
       owner: workspace.ownerId,
       githubConfig: workspace.githubConfig || {},
       members: Array.from(uniqueMembersMap.values()),
-      currentUserRole: currentUserRole  // <-- Added explicit current user role
+      currentUserRole: currentUserRole
     });
   } catch (err) {
     console.error('[Workspace] getMyWorkspace error:', err);
     res.status(500).json({ error: 'Failed to load workspace' });
+  }
+};
+
+/**
+ * GET /api/workspace/:workspaceId
+ * Fetch specific workspace data including member roles.
+ */
+exports.getWorkspaceById = async (req, res) => {
+  try {
+    const { workspaceId } = req.params;
+    const userId = req.user?._id || req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const userIdStr = userId.toString();
+    const workspace = await Workspace.findById(workspaceId)
+      .populate('members.userId', 'fullName email avatarUrl role lastSeenAt')
+      .populate('ownerId', 'fullName email');
+
+    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+
+    let currentUserRole = null;
+    const uniqueMembersMap = new Map();
+    
+    workspace.members.forEach(m => {
+      if (!m.userId) return;
+      const memberIdStr = (m.userId._id || m.userId).toString();
+      const memberRole = m.role || 'collaborator';
+      
+      if (memberIdStr === userIdStr) {
+        if (!currentUserRole || memberRole === 'pm') {
+          currentUserRole = memberRole;
+        }
+      }
+      
+      const existing = uniqueMembersMap.get(memberIdStr);
+      if (!existing) {
+        uniqueMembersMap.set(memberIdStr, {
+          _id: m.userId._id || m.userId,
+          fullName: m.userId.fullName,
+          email: m.userId.email,
+          avatarUrl: m.userId.avatarUrl,
+          role: memberRole
+        });
+      } else if (memberRole === 'pm' && existing.role !== 'pm') {
+        existing.role = 'pm';
+      }
+    });
+
+    res.json({
+      _id: workspace._id,
+      name: workspace.name,
+      description: workspace.description,
+      owner: workspace.ownerId,
+      githubConfig: workspace.githubConfig || {},
+      members: Array.from(uniqueMembersMap.values()),
+      currentUserRole: currentUserRole
+    });
+  } catch (err) {
+    console.error('[Workspace] getWorkspaceById error:', err);
+    res.status(500).json({ error: 'Failed to load workspace details' });
   }
 };
 

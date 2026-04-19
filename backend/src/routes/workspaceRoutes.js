@@ -3,6 +3,7 @@ const {
     getMyWorkspace,
     createWorkspace,
     getWorkspaceMembers, // Added this new function
+    getWorkspaceById,
     addMemberToWorkspace,
     updateMemberRole,
     removeMember
@@ -22,6 +23,7 @@ router.post('/', createWorkspace);
 // Scoped Member Fetching (Fixes the "Global Collaborators" issue)
 // This route ensures Slack and the UI only show people in THIS specific repo
 router.get('/:workspaceId/members', getWorkspaceMembers);
+router.get('/:workspaceId', getWorkspaceById);
 
 // Member Management (Restricted to PMs)
 router.post('/:workspaceId/add-member', isPM, addMemberToWorkspace);

@@ -37,15 +37,16 @@ async function isPM(req, res, next) {
     const userIdStr = currentUserId.toString();
 
     // Find ALL entries for the current user in workspace members
-    const userEntries = workspace.members.filter(m =>
-      m.userId.toString() === userIdStr
-    );
+    const userEntries = workspace.members.filter(m => {
+      const entryId = (m.userId?._id || m.userId || '').toString();
+      return entryId === userIdStr;
+    });
 
     // Check if ANY entry has PM role
     const hasPMRole = userEntries.some(m => m.role === 'pm');
 
     // Fallback: Also check if user is the workspace owner
-    const isOwner = workspace.ownerId && workspace.ownerId.toString() === userIdStr;
+    const isOwner = workspace.ownerId && (workspace.ownerId._id || workspace.ownerId).toString() === userIdStr;
 
     console.log(`[isPM] User ${userIdStr} in workspace ${workspaceId}:`);
     console.log(`[isPM]   Entries found: ${userEntries.length}, roles: [${userEntries.map(m => m.role).join(', ')}]`);

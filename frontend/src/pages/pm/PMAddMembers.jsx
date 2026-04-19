@@ -38,8 +38,12 @@ const PMAddMembers = () => {
             setLoading(true);
             setError(null);
             try {
-                // 1. Fetch workspace
-                const wsRes = await axios.get(`${API_BASE_URL}/workspace/me`, {
+                // 1. Fetch workspace (prefer selectedRepo's workspace explicitly)
+                const wsUrl = selectedRepo?.workspaceId 
+                  ? `${API_BASE_URL}/workspace/${selectedRepo.workspaceId}` 
+                  : `${API_BASE_URL}/workspace/me`;
+
+                const wsRes = await axios.get(wsUrl, {
                     withCredentials: true,
                     headers: token ? { Authorization: `Bearer ${token}` } : {},
                 });

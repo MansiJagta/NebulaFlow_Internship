@@ -310,7 +310,10 @@ exports.githubCallback = async (req, res) => {
 
     // 3️⃣ Get GitHub user emails
     const emailsRes = await axios.get('https://api.github.com/user/emails', {
-      headers: { Authorization: `Bearer ${accessToken}` },
+      headers: { 
+        Authorization: `Bearer ${accessToken}`,
+        'User-Agent': 'NebulaFlow-App'
+      },
     });
 
     const githubEmails = emailsRes.data
@@ -326,7 +329,10 @@ exports.githubCallback = async (req, res) => {
 
     // 5️⃣ Get GitHub user info
     const githubUserRes = await axios.get('https://api.github.com/user', {
-      headers: { Authorization: `Bearer ${accessToken}` },
+      headers: { 
+        Authorization: `Bearer ${accessToken}`,
+        'User-Agent': 'NebulaFlow-App'
+      },
     });
     const githubUser = githubUserRes.data;
 
@@ -369,7 +375,10 @@ exports.getGitHubRepos = async (req, res) => {
     const token = decrypt(identity.accessTokenEncrypted);
 
     const response = await axios.get('https://api.github.com/user/repos', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { 
+        Authorization: `Bearer ${token}`,
+        'User-Agent': 'NebulaFlow-App'
+      },
     });
 
     const repos = response.data.map(repo => ({

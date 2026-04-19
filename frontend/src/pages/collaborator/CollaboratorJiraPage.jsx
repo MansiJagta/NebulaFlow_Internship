@@ -132,12 +132,6 @@ const CollaboratorJiraPage = () => {
                         <p className="text-sm text-muted-foreground">Focus on your assigned tasks</p>
                     </motion.div>
                     <div className="flex items-center gap-3">
-                        <div className="hidden md:flex items-center gap-2 mr-4 bg-muted/10 p-1.5 rounded-lg border border-border/20">
-                            <span className="text-xs font-semibold text-muted-foreground ml-2">Sprint Goal</span>
-                            <div className="h-8 w-8">
-                                <DonutChart />
-                            </div>
-                        </div>
                         <Button size="sm" variant="gradient"><Plus className="w-4 h-4 mr-1" /> New Issue</Button>
                     </div>
                 </div>

@@ -39,6 +39,10 @@ async function requireAuth(req, res, next) {
 
     console.log('[auth] ✅ Auth passed for user:', user._id);
     console.log('[auth] ========== END AUTH CHECK ==========');
+    // Update lastSeenAt for real-time presence
+    user.lastSeenAt = new Date();
+    await user.save().catch(err => console.error('[auth] lastSeenAt update failed:', err.message));
+
     req.user = user;
     next();
   } catch (err) {

@@ -101,7 +101,6 @@ export const DonutChart = () => {
                         ))}
                     </Pie>
                     <Tooltip content={<CustomTooltip />} />
-                    <Legend />
                 </RechartsPieChart>
             </ResponsiveContainer>
         </div>

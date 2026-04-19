@@ -28,7 +28,6 @@ const collabLinks = [
     { to: '/collaborator/slack', label: 'Slack', icon: MessageSquare },
     { to: '/collaborator/github', label: 'GitHub', icon: GitBranch },
     { to: '/collaborator/performance', label: 'Performance', icon: BarChart3 },
-    { to: '/collaborator/group', label: 'Group', icon: LayoutDashboard },
 ];
 
 const Sidebar = ({ collapsed: propCollapsed, setCollapsed: propSetCollapsed }) => {

@@ -4,6 +4,7 @@ const {
     getRepoCollaborators,
     syncGitHubRepository,
 } = require('../controllers/githubController');
+const { getAdvancedGitHubAnalytics } = require('../controllers/githubAnalyticsController');
 const { sendInvite } = require('../controllers/inviteController');
 const { requireAuth } = require('../middleware/auth');
 
@@ -18,6 +19,9 @@ router.get('/repo/collaborators', getRepoCollaborators);
 // POST /api/github/sync-repo (requires authentication)
 // Syncs a GitHub repository and assigns roles based on ownership
 router.post('/sync-repo', requireAuth, syncGitHubRepository);
+
+// GET /api/github/advanced-analytics
+router.get('/advanced-analytics', requireAuth, getAdvancedGitHubAnalytics);
 
 // POST /api/github/invite  { email, githubUsername?, role, repoOwner, repoName }
 router.post('/invite', sendInvite);
