@@ -38,34 +38,56 @@ chatSocket(io);
 app.set('io', io); // Make io accessible to our routes
 
 // Middleware
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  'https://nebula-flow-internship-nine.vercel.app',
+  'http://localhost:8080',
+  'http://localhost:5173'
+];
+
 app.use(cors({ 
-  origin: process.env.FRONTEND_URL, 
+  origin: function (origin, callback) {
+    console.log('[cors] Incoming origin:', origin);
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log('[cors] ❌ Origin not allowed:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
 }));
+
 app.use(express.json());
+
+// Debug logging for all incoming requests (Enhanced)
+app.use((req, res, next) => {
+  console.log(`\n--> ${req.method} ${req.originalUrl}`);
+  console.log(`[req] Origin: ${req.get('origin') || 'N/A'}`);
+  console.log(`[req] Has Authorization: ${!!req.get('Authorization')}`);
+  console.log(`[req] Has Cookies: ${!!req.get('Cookie')}`);
+  next();
+});
 
 // File upload middleware (for Cloudinary)
 const fileUpload = require('express-fileupload');
 app.use(fileUpload({ useTempFiles: true }));
 
-// Debug logging
-app.use((req, res, next) => {
-  console.log(`--> ${req.method} ${req.originalUrl}`);
-  next();
-});
-
 // Session config
+app.set('trust proxy', 1); // IMPORTANT for Render/Vercel (Load Balancers)
 app.use(
   session({
     secret: process.env.SESSION_SECRET || 'nebula-flow-secret',
     resave: false,
     saveUninitialized: false,
+    proxy: true, 
+    name: 'nebula.sid', // Custom cookie name
     cookie: { 
-      secure: false,  // HTTP in dev, HTTPS in prod
+      secure: true, // MUST be true for SameSite: none
       httpOnly: true,
-      sameSite: 'lax',
+      sameSite: 'none', // MUST be none for cross-site
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     }
   })

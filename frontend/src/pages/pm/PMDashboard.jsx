@@ -37,8 +37,13 @@ const PMDashboard = () => {
         const fetchData = async () => {
             setGhLoading(true);
             try {
-                // 1. Get Workspace
-                const wsRes = await axios.get(`${API_BASE_URL}/workspace/me`, { withCredentials: true });
+                // 1. Get Workspace (strictly scoped)
+                const workspaceIdToFetch = selectedRepo?.workspaceId || null;
+                const wsUrl = workspaceIdToFetch 
+                    ? `${API_BASE_URL}/workspace/${workspaceIdToFetch}` 
+                    : `${API_BASE_URL}/workspace/me`;
+
+                const wsRes = await axios.get(wsUrl, { withCredentials: true });
                 const workspaceId = wsRes.data?._id;
 
                 // 2. Fetch Performance, GitHub, Issues, and Sprints data in parallel

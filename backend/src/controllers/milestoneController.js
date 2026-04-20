@@ -5,11 +5,17 @@ const Workspace = require('../models/Workspace');
 exports.getMilestones = async (req, res) => {
   try {
     const { workspaceId } = req.query;
+    if (!workspaceId) {
+      return res.status(400).json({ error: 'workspaceId is required' });
+    }
 
-    const filter = {};
-    if (workspaceId) filter.workspaceId = workspaceId;
+    // Security: Ensure user is a member of this workspace
+    const workspace = await Workspace.findOne({ _id: workspaceId, 'members.userId': req.user._id });
+    if (!workspace) {
+      return res.status(403).json({ error: 'Access denied to this workspace' });
+    }
 
-    const milestones = await Milestone.find(filter)
+    const milestones = await Milestone.find({ workspaceId })
       .sort({ expectedStartDate: 1 })
       .lean();
 

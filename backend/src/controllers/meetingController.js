@@ -1,14 +1,21 @@
 const Meeting = require('../models/Meeting');
+const Workspace = require('../models/Workspace');
 
 // GET all meetings for a workspace
 exports.getMeetings = async (req, res) => {
   try {
     const { workspaceId } = req.query;
+    if (!workspaceId) {
+      return res.status(400).json({ error: 'workspaceId is required' });
+    }
 
-    const filter = {};
-    if (workspaceId) filter.workspaceId = workspaceId;
+    // Security: Ensure user is a member of this workspace
+    const workspace = await Workspace.findOne({ _id: workspaceId, 'members.userId': req.user._id });
+    if (!workspace) {
+      return res.status(403).json({ error: 'Access denied to this workspace' });
+    }
 
-    const meetings = await Meeting.find(filter)
+    const meetings = await Meeting.find({ workspaceId })
       .populate('organizerId', 'fullName email')
       .populate('attendees', 'fullName email')
       .sort({ startTime: 1 })

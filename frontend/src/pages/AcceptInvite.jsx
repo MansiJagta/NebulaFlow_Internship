@@ -24,9 +24,13 @@ export default function AcceptInvite() {
 
     const acceptInvite = async () => {
       try {
+        const headers = {};
+        const storedToken = localStorage.getItem('nebula-token');
+        if (storedToken) headers.Authorization = `Bearer ${storedToken}`;
+
         const res = await axios.get(
           `${API_BASE_URL}/auth/accept-invite?token=${token}`,
-          { withCredentials: true }
+          { headers, withCredentials: true }
         );
 
         const { action, redirectUrl, message: msg } = res.data;

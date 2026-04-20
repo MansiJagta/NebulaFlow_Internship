@@ -12,15 +12,15 @@ function generateIssueKey() {
 
 async function getUserWorkspace(userId, workspaceId = null) {
   if (workspaceId) {
-    const ws = await Workspace.findOne({
+    if (!mongoose.Types.ObjectId.isValid(workspaceId)) return null;
+    return await Workspace.findOne({
       _id: workspaceId,
       'members.userId': userId
     }).populate('members.userId', 'fullName email avatarUrl role isActive');
-    if (ws) return ws;
   }
 
-  // Fallback to the first workspace they belong to if no specific ID or access to that ID
-  return await Workspace.findOne({ 'members.userId': userId }).populate('members.userId', 'fullName email avatarUrl role isActive');
+  // No workspaceId provided - return null to avoid accidental data leakage from other workspaces
+  return null;
 }
 
 // --- Users ---
@@ -68,9 +68,11 @@ exports.getIssues = async (req, res) => {
     const filters = {};
 
     const workspace = await getUserWorkspace(req.user._id, workspaceId);
-    if (workspace) {
-      filters.workspaceId = workspace._id;
+    if (!workspace) {
+      // If no valid workspace context, return empty issues
+      return res.json([]);
     }
+    filters.workspaceId = workspace._id;
 
     if (sprintId) {
       filters.sprintId = sprintId;

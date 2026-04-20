@@ -28,8 +28,13 @@ const PerformancePage = () => {
     useEffect(() => {
         const fetchAll = async () => {
             try {
-                // 1. Get Workspace
-                const wsRes = await axios.get(`${API_BASE_URL}/workspace/me`, { withCredentials: true });
+                // 1. Get Workspace (strictly scoped)
+                const workspaceIdToFetch = selectedRepo?.workspaceId || null;
+                const wsUrl = workspaceIdToFetch 
+                    ? `${API_BASE_URL}/workspace/${workspaceIdToFetch}` 
+                    : `${API_BASE_URL}/workspace/me`;
+
+                const wsRes = await axios.get(wsUrl, { withCredentials: true });
                 setWorkspace(wsRes.data);
 
                 // 2. Get Performance Data - PASS SELECTED REPO TO API

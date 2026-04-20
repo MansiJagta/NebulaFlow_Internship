@@ -29,11 +29,17 @@ export const useCollaboratorWorkspaceLive = () => {
         setError(null);
 
         try {
-            const workspaceRes = await axios.get(`${API_BASE_URL}/workspace/me`, axiosConfig).catch(() => ({ data: null }));
+            const workspaceIdToFetch = selectedRepo?.workspaceId || null;
+            const wsUrl = workspaceIdToFetch 
+                ? `${API_BASE_URL}/workspace/${workspaceIdToFetch}` 
+                : `${API_BASE_URL}/workspace/me`;
+
+            const workspaceRes = await axios.get(wsUrl, axiosConfig).catch(() => ({ data: null }));
             const nextWorkspace = workspaceRes.data || null;
-            const workspaceId = selectedRepo?.workspaceId || nextWorkspace?._id || null;
-            const owner = selectedRepo?.owner || (selectedRepo?.fullName?.includes('/') ? selectedRepo.fullName.split('/')[0] : null);
-            const repo = selectedRepo?.name || null;
+            const workspaceId = nextWorkspace?._id || workspaceIdToFetch;
+            
+            const owner = selectedRepo?.owner || (selectedRepo?.fullName?.includes('/') ? selectedRepo.fullName.split('/')[0] : null) || nextWorkspace?.githubConfig?.repoOwner;
+            const repo = selectedRepo?.name || nextWorkspace?.githubConfig?.repoName;
 
             const requests = [
                 axios.get(`${API_BASE_URL}/auth/github/repos`, axiosConfig).catch(() => ({ data: [] })),

@@ -135,9 +135,15 @@ const JiraPage = () => {
 
     const loadData = async () => {
         try {
-            const workspaceRes = await axios.get(`${API_BASE_URL}/workspace/me`, { headers: authHeaders, withCredentials: true });
-            const workspaceId = workspaceRes.data?._id;
-            setWorkspace(workspaceRes.data || null);
+            const workspaceIdToFetch = selectedRepo?.workspaceId || null;
+            const wsUrl = workspaceIdToFetch 
+                ? `${API_BASE_URL}/workspace/${workspaceIdToFetch}` 
+                : `${API_BASE_URL}/workspace/me`;
+
+            const workspaceRes = await axios.get(wsUrl, { headers: authHeaders, withCredentials: true });
+            const workspaceData = workspaceRes.data;
+            const workspaceId = workspaceData?._id;
+            setWorkspace(workspaceData || null);
 
             let collabPromise = Promise.resolve({ data: [] });
             if (selectedRepo && selectedRepo.name) {
@@ -184,7 +190,7 @@ const JiraPage = () => {
     useEffect(() => {
         loadData();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [selectedRepo?._id, selectedRepo?.workspaceId]);
 
     const filteredCollaborators = useMemo(() => {
         return collaborators;

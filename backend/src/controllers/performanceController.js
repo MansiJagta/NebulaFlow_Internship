@@ -16,8 +16,9 @@ exports.getPerformanceData = async (req, res) => {
     const { repoOwner, repoName } = req.query; 
     const userId = req.user.id;
 
-    const workspace = await Workspace.findById(workspaceId).populate('members.userId', 'fullName email avatarUrl');
-    if (!workspace) return res.status(404).json({ message: 'Workspace not found' });
+    const workspace = await Workspace.findOne({ _id: workspaceId, 'members.userId': req.user._id })
+      .populate('members.userId', 'fullName email avatarUrl');
+    if (!workspace) return res.status(404).json({ message: 'Workspace not found or access denied' });
 
     const effectiveRepoOwner = repoOwner || workspace.githubConfig?.repoOwner;
     const effectiveRepoName = repoName || workspace.githubConfig?.repoName;
@@ -256,9 +257,9 @@ exports.getCollaboratorPerformance = async (req, res) => {
     const { userId } = req.params;
     const { workspaceId, repoOwner, repoName } = req.query;
 
-    const workspace = await Workspace.findById(workspaceId)
+    const workspace = await Workspace.findOne({ _id: workspaceId, 'members.userId': req.user._id })
       .populate('members.userId', 'fullName email avatarUrl');
-    if (!workspace) return res.status(404).json({ message: 'Workspace not found' });
+    if (!workspace) return res.status(404).json({ message: 'Workspace not found or access denied' });
 
     const effectiveOwner = repoOwner || workspace.githubConfig?.repoOwner;
     const effectiveRepo = repoName || workspace.githubConfig?.repoName;
