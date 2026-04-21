@@ -6,7 +6,7 @@ import { sortableKeyboardCoordinates, useSortable, SortableContext, verticalList
 import { CSS } from '@dnd-kit/utilities';
 import { statusColumns, statusLabels, priorityColors } from '@/data/jiraMockData';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const MiniKanban = () => {
     const { token } = useAuth();
@@ -61,7 +61,7 @@ const MiniKanban = () => {
             setItems(prev => prev.map(t => (t.issueKey === activeId ? { ...t, status: overId } : t)));
             if (activeItem) {
                 await axios.patch(
-                    `${process.env.VITE_API_URL || ''}/api/pm/issues/${activeItem._id}`,
+                    `${API_BASE_URL}/pm/issues/${activeItem._id}`,
                     { status: overId },
                     { headers: authHeaders, withCredentials: true }
                 );
@@ -69,7 +69,7 @@ const MiniKanban = () => {
         } else if (activeItem && overItem && activeItem.status !== overItem.status) {
             setItems(prev => prev.map(t => (t.issueKey === activeId ? { ...t, status: overItem.status } : t)));
             await axios.patch(
-                `${process.env.VITE_API_URL || ''}/api/pm/issues/${activeItem._id}`,
+                `${API_BASE_URL}/pm/issues/${activeItem._id}`,
                 { status: overItem.status },
                 { headers: authHeaders, withCredentials: true }
             );

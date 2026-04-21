@@ -8,7 +8,7 @@ import TaskEditModal from './TaskEditModal';
 import MeetingDetailModal from './MeetingDetailModal';
 import MilestoneDetailModal from './MilestoneDetailModal';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const CalendarView = ({ issues, sprints = [], users = [] }) => {
     const { token } = useAuth();

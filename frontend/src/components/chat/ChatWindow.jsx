@@ -20,7 +20,7 @@ const getSenderName = (sender) => {
 const isImageFile = (url = '') => /\.(png|jpg|jpeg|gif|webp|svg)(\?.*)?$/i.test(url);
 const isPdfFile = (url = '') => /\.pdf(\?.*)?$/i.test(url);
 
-const ChatWindow = ({ activeChannel, messages, typingText, setMessages, API_BASE_URL = 'http://localhost:5000', token }) => {
+const ChatWindow = ({ activeChannel, messages, typingText, setMessages, API_BASE_URL = 'http://localhost:5000/api', token }) => {
   const { user } = useAuth();
   const bottomRef = useRef(null);
   
