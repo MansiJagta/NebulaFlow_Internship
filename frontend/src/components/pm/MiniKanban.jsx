@@ -6,7 +6,7 @@ import { sortableKeyboardCoordinates, useSortable, SortableContext, verticalList
 import { CSS } from '@dnd-kit/utilities';
 import { statusColumns, statusLabels, priorityColors } from '@/data/jiraMockData';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 const MiniKanban = () => {
     const { token } = useAuth();
